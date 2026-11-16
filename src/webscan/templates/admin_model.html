@@ -16,7 +16,10 @@
   <div class="panel">
     <div class="panel-h"><h3>FREEZE VERIFICATION</h3></div>
     {% if not bad %}<p class="green"><b>PASS</b>: every tracked model, manifest and source file matches <code>artifacts/v3.2/freeze/freeze_manifest.json</code>.</p>
-    {% else %}<p class="amber"><b>{{ bad | length }} file(s) differ from the freeze manifest.</b> Model pickles are scored as-is; differences are usually code or line-ending edits after the freeze.</p>
+    {% else %}<p class="amber"><b>{{ bad | length }} tracked file(s) are missing or differ from the freeze manifest.</b>
+      On a fresh clone this is expected: the research manifests and feature tables are not in git. Changed files are usually
+      code or line-ending edits after the freeze.</p>
+      <p class="{{ 'green' if models_ok else 'red' }}"><b>Model pickles: {{ 'match the freeze (scored models are the frozen ones)' if models_ok else 'DO NOT match the freeze manifest' }}</b></p>
       <ul class="small mono">{% for b in bad[:15] %}<li>{{ b }}</li>{% endfor %}</ul>{% endif %}
   </div>
   <div class="panel wide">

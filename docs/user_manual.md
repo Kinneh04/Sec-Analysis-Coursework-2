@@ -8,8 +8,8 @@
 
 ## Setup
 ```powershell
-cd C:\Users\user\Downloads\SA2
-py -3.10 -m venv .venv
+cd <path-to-your-clone>   # e.g. cd Sec-Analysis-Coursework-2
+py -3.11 -m venv .venv   # or just run dashboard.setup.bat once
 .\.venv\Scripts\python.exe -m pip install -e .
 ```
 

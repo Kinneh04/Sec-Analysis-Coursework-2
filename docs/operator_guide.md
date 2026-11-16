@@ -5,7 +5,7 @@ Static PE scoring using the **frozen V3.2** candidate model (`pe_v3`). Files are
 ## Quick start
 
 ```powershell
-cd C:\Users\user\Downloads\SA2
+cd <path-to-your-clone>   # e.g. cd Sec-Analysis-Coursework-2
 .\.venv\Scripts\python.exe -m src.v3.score C:\path\to\sample.exe
 ```
 

@@ -468,7 +468,8 @@ def create_app(data_dir: Path | None = None, *, start_worker: bool = True, scan_
         bad = freeze.verify(tag=scanner.MODEL_TAG)
         blind_path = Path("artifacts/v3.2/blind/blind_results.json")
         blind = json.loads(blind_path.read_text(encoding="utf-8")) if blind_path.is_file() else {}
-        return render_template("admin_model.html", thrs=scanner.thresholds(), bad=bad, blind=blind,
+        models_ok = not any("/models/" in b.replace("\\", "/") for b in bad)
+        return render_template("admin_model.html", thrs=scanner.thresholds(), bad=bad, blind=blind, models_ok=models_ok,
                                cal=json.loads(scanner.CALIBRATION.read_text(encoding="utf-8")))
 
     @app.errorhandler(413)

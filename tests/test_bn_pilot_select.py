@@ -1,8 +1,12 @@
+import pytest
+from pathlib import Path
 from src.bn_pilot_select import PILOT_TARGETS, select_pilot_cohort
 from src.common.config import load_config
 
 
 def test_pilot_select_counts_and_train_only():
+    if not Path("artifacts/manifests/split_assignments.parquet").is_file():
+        pytest.skip("local research artifact artifacts/manifests/split_assignments.parquet not present (artifacts/ is not in git)")
     cfg = load_config("configs/local.yaml")
     pilot = select_pilot_cohort(cfg)
     assert len(pilot) == sum(PILOT_TARGETS.values())

@@ -8,6 +8,8 @@ from src.v2.config import load_v2_config
 
 
 def test_v1_baseline_reproduction():
+    if not Path("artifacts/evaluations/test_results_v2.csv").is_file():
+        pytest.skip("local research artifact artifacts/evaluations/test_results_v2.csv not present (artifacts/ is not in git)")
     cfg = load_v2_config("configs/v2_experiment.yaml")
     manifest = load_v1_comparator_manifest(cfg["_v1_artifacts"])
     assert manifest["reproduction"]["pass"], manifest["reproduction"]["checks"]

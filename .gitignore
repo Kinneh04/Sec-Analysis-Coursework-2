@@ -1,7 +1,22 @@
 .venv/
-artifacts/
 logs/
 __pycache__/
 *.pyc
 *.pkl
 .playwright-mcp/
+
+# Generated research artifacts stay local (large, and some derive from the malware corpus) ...
+artifacts/*
+# ... except the small frozen V3.2 bundle the dashboard needs to run out of the box (~1.3 MB).
+!artifacts/v3.2/
+artifacts/v3.2/*
+!artifacts/v3.2/models/
+!artifacts/v3.2/models/final_pe_v3.pkl
+!artifacts/v3.2/models/final_pe_v1s.pkl
+!artifacts/v3.2/freeze/
+!artifacts/v3.2/blind/
+artifacts/v3.2/blind/*
+!artifacts/v3.2/blind/blind_results.json
+!artifacts/deploy/
+# Runtime data (quarantined uploads, scan.db / edr.db with the admin password and API key) is never committed:
+# artifacts/dashboard/ and artifacts/edr/ stay ignored by artifacts/* above.

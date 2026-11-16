@@ -1,9 +1,13 @@
+import pytest
+from pathlib import Path
 from src.audit.schema import is_forbidden_predictor
 from src.v2.inputs import load_v2_inputs, run_input_audit, predictor_schema_lock, build_development_frame
 from src.v2.quality import compute_eligibility
 
 
 def test_v2_inputs_load_and_gate():
+    if not Path("artifacts/manifests/split_assignments.parquet").is_file():
+        pytest.skip("local research artifact artifacts/manifests/split_assignments.parquet not present (artifacts/ is not in git)")
     data = load_v2_inputs("configs/v2_experiment.yaml")
     audit = run_input_audit(data)
     assert audit["split_integrity"]["pass"]

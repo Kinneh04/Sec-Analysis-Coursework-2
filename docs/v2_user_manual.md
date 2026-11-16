@@ -13,7 +13,7 @@ V2 adds **coverage-aware fusion (V2-A)** and **uncertainty-aware review (V2-B)**
 ## Typical workflow
 
 ```powershell
-cd C:\Users\user\Downloads\SA2
+cd <path-to-your-clone>   # e.g. cd Sec-Analysis-Coursework-2
 .\scripts\run_v2_development.ps1
 python -m src.v2.cli freeze --config configs/v2_experiment.yaml
 .\scripts\run_v2_blind.ps1

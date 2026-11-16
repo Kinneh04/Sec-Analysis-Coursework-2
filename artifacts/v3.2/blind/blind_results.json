@@ -1,0 +1,406 @@
+{
+  "cohort_tag": "v3.2",
+  "run_at": "2026-11-01T14:55:55.187289+00:00",
+  "freeze_manifest_sha256": "5fc204f5f60c5345d251e4dbf3761083a105e639d27687a9d4f5975c98d0434f",
+  "matched_fpr_descriptive": {
+    "fpr_0.005": {
+      "baseline_tpr": 0.5354523227383863,
+      "candidate_tpr": 0.7310513447432763,
+      "delta_candidate_minus_baseline": 0.19559902200489,
+      "note": "Descriptive only: thresholds re-picked on blind rows."
+    },
+    "fpr_0.010": {
+      "baseline_tpr": 0.6039119804400978,
+      "candidate_tpr": 0.8019559902200489,
+      "delta_candidate_minus_baseline": 0.19804400977995118,
+      "note": "Descriptive only: thresholds re-picked on blind rows."
+    }
+  },
+  "n_blind": 567,
+  "n_benign": 158,
+  "n_malicious": 409,
+  "n_groups": 539,
+  "disjointness": {
+    "sha_overlap_v1_all_splits": 0,
+    "sha_overlap_training_pool": 0,
+    "group_overlap_training_pool": 0,
+    "group_overlap_v1_all_splits": 0,
+    "imphash_overlap_training": 5,
+    "identical_pe_v3_vector_in_training": 1
+  },
+  "candidate_pe_v3": {
+    "threshold": 0.89436006630261,
+    "fixed": {
+      "tpr": 0.7383863080684596,
+      "fpr": 0.006329113924050633,
+      "tp": 302,
+      "fp": 1,
+      "n_malicious": 409,
+      "n_benign": 158,
+      "tpr_ci95": [
+        0.6937129460957197,
+        0.7786231750703643
+      ],
+      "fpr_ci95": [
+        0.0011180903011854051,
+        0.034976461408634564
+      ],
+      "min_attainable_fpr": 0.006329113924050633
+    },
+    "roc_auc": 0.982420847389434,
+    "pr_auc": 0.9932746172861807
+  },
+  "baseline_pe_v1s": {
+    "threshold": 0.9089814761097144,
+    "fixed": {
+      "tpr": 0.5965770171149144,
+      "fpr": 0.006329113924050633,
+      "tp": 244,
+      "fp": 1,
+      "n_malicious": 409,
+      "n_benign": 158,
+      "tpr_ci95": [
+        0.5483461942807056,
+        0.6430104907045283
+      ],
+      "fpr_ci95": [
+        0.0011180903011854051,
+        0.034976461408634564
+      ],
+      "min_attainable_fpr": 0.006329113924050633
+    },
+    "roc_auc": 0.969159109900653,
+    "pr_auc": 0.9880754640525337
+  },
+  "paired_candidate_minus_baseline": {
+    "delta_tpr_b_minus_a": 0.14180929095354522,
+    "delta_tpr_ci95": [
+      0.09620253164556962,
+      0.1879522601684935
+    ],
+    "delta_fpr_b_minus_a": 0.0,
+    "delta_fpr_ci95": [
+      0.0,
+      0.0
+    ],
+    "fraction_b_better_tpr": 1.0,
+    "n_groups": 539,
+    "n_boot": 2000,
+    "seed": 42
+  },
+  "sensitivity_excluding_identical_vectors": {
+    "n": 566,
+    "candidate": {
+      "tpr": 0.7383863080684596,
+      "fpr": 0.006369426751592357,
+      "tp": 302,
+      "fp": 1,
+      "n_malicious": 409,
+      "n_benign": 157,
+      "tpr_ci95": [
+        0.6937129460957197,
+        0.7786231750703643
+      ],
+      "fpr_ci95": [
+        0.0011252175133328497,
+        0.03519374474518734
+      ],
+      "min_attainable_fpr": 0.006369426751592357
+    },
+    "baseline": {
+      "tpr": 0.5965770171149144,
+      "fpr": 0.006369426751592357,
+      "tp": 244,
+      "fp": 1,
+      "n_malicious": 409,
+      "n_benign": 157,
+      "tpr_ci95": [
+        0.5483461942807056,
+        0.6430104907045283
+      ],
+      "fpr_ci95": [
+        0.0011252175133328497,
+        0.03519374474518734
+      ],
+      "min_attainable_fpr": 0.006369426751592357
+    }
+  },
+  "decision": {
+    "tpr_gain": 0.14180929095354522,
+    "gain_ge_min": true,
+    "ci_lower_gt_0": true,
+    "fpr_not_higher": true,
+    "improvement_supported": true
+  },
+  "errors_candidate": {
+    "fn_by_filetype": [
+      {
+        "die_filetype": "PE64",
+        "n": 267,
+        "detected": 167,
+        "tpr": 0.6254681647940075
+      },
+      {
+        "die_filetype": "PE32",
+        "n": 142,
+        "detected": 135,
+        "tpr": 0.9507042253521126
+      }
+    ],
+    "fn_by_packed": [
+      {
+        "packed": "False",
+        "n": 334,
+        "detected": 231,
+        "tpr": 0.6916167664670658
+      },
+      {
+        "packed": "True",
+        "n": 75,
+        "detected": 71,
+        "tpr": 0.9466666666666667
+      }
+    ],
+    "fn_by_size": [
+      {
+        "size_bucket": "100KB-1MB",
+        "n": 192,
+        "detected": 148,
+        "tpr": 0.7708333333333334
+      },
+      {
+        "size_bucket": "1-10MB",
+        "n": 150,
+        "detected": 111,
+        "tpr": 0.74
+      },
+      {
+        "size_bucket": "<100KB",
+        "n": 40,
+        "detected": 23,
+        "tpr": 0.575
+      },
+      {
+        "size_bucket": ">10MB",
+        "n": 27,
+        "detected": 20,
+        "tpr": 0.7407407407407407
+      }
+    ],
+    "fn_by_compiler": [
+      {
+        "die_compiler": "(Heur)Compiler: Microsoft Visual C/C++",
+        "n": 26,
+        "detected": 19,
+        "tpr": 0.7307692307692307
+      },
+      {
+        "die_compiler": "Compiler: Microsoft Visual C/C++(16.00)",
+        "n": 20,
+        "detected": 11,
+        "tpr": 0.55
+      },
+      {
+        "die_compiler": "Compiler: Microsoft Visual C/C++(15.00.21022)[LTCG/C++]",
+        "n": 19,
+        "detected": 19,
+        "tpr": 1.0
+      },
+      {
+        "die_compiler": "Compiler: Microsoft Visual C/C++(16.00.30319)[LTCG/C++]",
+        "n": 15,
+        "detected": 13,
+        "tpr": 0.8666666666666667
+      },
+      {
+        "die_compiler": "Compiler: Microsoft Visual C/C++",
+        "n": 10,
+        "detected": 10,
+        "tpr": 1.0
+      },
+      {
+        "die_compiler": "Compiler: VB.NET",
+        "n": 10,
+        "detected": 8,
+        "tpr": 0.8
+      },
+      {
+        "die_compiler": "Compiler: Borland Delphi(7)[Enterprise]",
+        "n": 9,
+        "detected": 9,
+        "tpr": 1.0
+      },
+      {
+        "die_compiler": "Compiler: Microsoft Visual C/C++(15.00-16.00)[libcmt]",
+        "n": 7,
+        "detected": 7,
+        "tpr": 1.0
+      },
+      {
+        "die_compiler": "Compiler: Microsoft Visual C/C++(19.00.24215)[C++]",
+        "n": 6,
+        "detected": 5,
+        "tpr": 0.8333333333333334
+      },
+      {
+        "die_compiler": "Compiler: Microsoft Visual C/C++(15.00.21022)[C++]",
+        "n": 6,
+        "detected": 6,
+        "tpr": 1.0
+      }
+    ],
+    "fp_by_source": [
+      {
+        "source": "benign_third_party",
+        "n": 99,
+        "detected": 0,
+        "tpr": 0.0
+      },
+      {
+        "source": "benign_windows_os",
+        "n": 59,
+        "detected": 1,
+        "tpr": 0.01694915254237288
+      }
+    ],
+    "false_positive_paths": [
+      "C:\\Windows\\System32\\DriverStore\\FileRepository\\netr7364.inf_amd64_3d06f050b5db1b2c\\netr7364.sys"
+    ]
+  },
+  "errors_baseline": {
+    "fn_by_filetype": [
+      {
+        "die_filetype": "PE64",
+        "n": 267,
+        "detected": 138,
+        "tpr": 0.5168539325842697
+      },
+      {
+        "die_filetype": "PE32",
+        "n": 142,
+        "detected": 106,
+        "tpr": 0.7464788732394366
+      }
+    ],
+    "fn_by_packed": [
+      {
+        "packed": "False",
+        "n": 334,
+        "detected": 179,
+        "tpr": 0.5359281437125748
+      },
+      {
+        "packed": "True",
+        "n": 75,
+        "detected": 65,
+        "tpr": 0.8666666666666667
+      }
+    ],
+    "fn_by_size": [
+      {
+        "size_bucket": "100KB-1MB",
+        "n": 192,
+        "detected": 123,
+        "tpr": 0.640625
+      },
+      {
+        "size_bucket": "1-10MB",
+        "n": 150,
+        "detected": 93,
+        "tpr": 0.62
+      },
+      {
+        "size_bucket": "<100KB",
+        "n": 40,
+        "detected": 9,
+        "tpr": 0.225
+      },
+      {
+        "size_bucket": ">10MB",
+        "n": 27,
+        "detected": 19,
+        "tpr": 0.7037037037037037
+      }
+    ],
+    "fn_by_compiler": [
+      {
+        "die_compiler": "(Heur)Compiler: Microsoft Visual C/C++",
+        "n": 26,
+        "detected": 18,
+        "tpr": 0.6923076923076923
+      },
+      {
+        "die_compiler": "Compiler: Microsoft Visual C/C++(16.00)",
+        "n": 20,
+        "detected": 10,
+        "tpr": 0.5
+      },
+      {
+        "die_compiler": "Compiler: Microsoft Visual C/C++(15.00.21022)[LTCG/C++]",
+        "n": 19,
+        "detected": 19,
+        "tpr": 1.0
+      },
+      {
+        "die_compiler": "Compiler: Microsoft Visual C/C++(16.00.30319)[LTCG/C++]",
+        "n": 15,
+        "detected": 13,
+        "tpr": 0.8666666666666667
+      },
+      {
+        "die_compiler": "Compiler: Microsoft Visual C/C++",
+        "n": 10,
+        "detected": 7,
+        "tpr": 0.7
+      },
+      {
+        "die_compiler": "Compiler: VB.NET",
+        "n": 10,
+        "detected": 7,
+        "tpr": 0.7
+      },
+      {
+        "die_compiler": "Compiler: Borland Delphi(7)[Enterprise]",
+        "n": 9,
+        "detected": 7,
+        "tpr": 0.7777777777777778
+      },
+      {
+        "die_compiler": "Compiler: Microsoft Visual C/C++(15.00-16.00)[libcmt]",
+        "n": 7,
+        "detected": 6,
+        "tpr": 0.8571428571428571
+      },
+      {
+        "die_compiler": "Compiler: Microsoft Visual C/C++(19.00.24215)[C++]",
+        "n": 6,
+        "detected": 2,
+        "tpr": 0.3333333333333333
+      },
+      {
+        "die_compiler": "Compiler: Microsoft Visual C/C++(15.00.21022)[C++]",
+        "n": 6,
+        "detected": 6,
+        "tpr": 1.0
+      }
+    ],
+    "fp_by_source": [
+      {
+        "source": "benign_third_party",
+        "n": 99,
+        "detected": 0,
+        "tpr": 0.0
+      },
+      {
+        "source": "benign_windows_os",
+        "n": 59,
+        "detected": 1,
+        "tpr": 0.01694915254237288
+      }
+    ],
+    "false_positive_paths": [
+      "C:\\Windows\\System32\\DriverStore\\FileRepository\\netr7364.inf_amd64_3d06f050b5db1b2c\\netr7364.sys"
+    ]
+  },
+  "sota_claim_supported": false
+}

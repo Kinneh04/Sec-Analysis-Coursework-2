@@ -1,0 +1,9 @@
+{
+  "model_tag": "v3.2",
+  "arm": "pe_v3",
+  "n_benign": 246,
+  "target_fpr": 0.01,
+  "recommended_threshold": 0.9602827332661088,
+  "achieved_fpr_at_threshold": 0.0,
+  "previous_frozen_threshold": 0.89436006630261
+}
