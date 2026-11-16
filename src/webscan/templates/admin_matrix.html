@@ -1,0 +1,16 @@
+{% extends "base_admin.html" %}
+{% block title %}Import Matrix{% endblock %}
+{% block body %}
+<div class="page-head"><h1>Import Matrix</h1></div>
+<div class="toolbar">
+  <div class="seg"><a class="{{ 'on' if only == 'all' }}" href="?only=all">All scanned</a><a class="{{ 'on' if only == 'flagged' }}" href="?only=flagged">Flagged only</a></div>
+  <span class="muted small">Columns are the most common imported DLLs across {{ n }} file(s); cards are the most common functions from that DLL. Numbers are file counts.</span>
+</div>
+<div class="matrix">
+{% for dll, n_files, fns in cols %}
+  <div class="mcol"><div class="mhead"><span class="mono">{{ dll }}</span><b>{{ n_files }}</b></div>
+    {% for fn, c in fns %}<div class="mcard"><span class="mono">{{ fn }}</span><b>{{ c }}</b></div>{% endfor %}
+  </div>
+{% else %}<p class="muted">No scanned files {{ 'flagged ' if only == 'flagged' }}yet.</p>{% endfor %}
+</div>
+{% endblock %}

@@ -1,0 +1,30 @@
+{% extends "base_admin.html" %}
+{% block title %}Sensors{% endblock %}
+{% block body %}
+<div class="page-head"><h1>Sensors &amp; API key</h1></div>
+<div class="panel">
+  <div class="panel-h"><h3>CONNECT AN SA2 SENTINEL SENSOR</h3></div>
+  <ol class="steps">
+    <li>Open the sensor console (default <a href="http://127.0.0.1:8001/settings" target="_blank">http://127.0.0.1:8001/settings</a>).</li>
+    <li>Dashboard URL: <code>{{ base }}</code></li>
+    <li>API key: <code id="api-key" class="secret" data-secret="{{ api_key }}">••••••••••••••••</code>
+      <button class="btn-light" data-reveal="api-key">Show</button> <button class="btn-light" data-copy="api-key">Copy</button></li>
+    <li>Press <b>Test connection</b>, then <b>Save</b>. The sensor appears below within 30 s.</li>
+  </ol>
+  <form method="post" onsubmit="return confirm('Rotate the key? Every connected sensor will be disconnected until you paste the new key.')">
+    <input type="hidden" name="action" value="rotate"><button class="btn-light danger">Rotate API key</button></form>
+</div>
+<div class="panel">
+  <div class="panel-h"><h3>SENSORS</h3><span class="muted small">online = heartbeat in the last 90 s</span></div>
+  <table class="tbl"><thead><tr><th>Health</th><th>Sensor</th><th>Host</th><th>Status</th><th>Version</th><th>Last heartbeat (UTC)</th>
+    <th>Processes</th><th>Connections</th><th>Uploads</th><th>Flagged</th><th>Open alerts</th></tr></thead><tbody>
+  {% for s in sensors %}{% set t = s.stats.totals or {} %}
+    <tr><td><span class="badge {{ 'badge-green' if s.online else 'badge-none' }}">{{ 100 if s.online else 0 }}</span></td>
+      <td><a href="{{ url_for('admin_sensor', sid=s.sensor_id) }}">{{ s.sensor_id }}</a></td><td>{{ s.hostname }}</td>
+      <td>{{ 'Online' if s.online else 'Offline' }}</td><td>{{ s.agent_version }}</td><td class="small">{{ s.last_heartbeat }}</td>
+      <td>{{ t.processes_observed or 0 }}</td><td>{{ t.connections_observed or 0 }}</td><td>{{ t.uploads_sent or 0 }}</td>
+      <td>{{ t.verdict_malicious or 0 }}</td><td>{{ (s.stats.gauges or {}).alerts_open or 0 }}</td></tr>
+  {% else %}<tr><td colspan="11" class="muted">No sensor has sent a heartbeat yet.</td></tr>{% endfor %}
+  </tbody></table>
+</div>
+{% endblock %}

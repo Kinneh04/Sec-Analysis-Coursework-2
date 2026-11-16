@@ -1,0 +1,45 @@
+{% extends "base_public.html" %}
+{% block body %}
+<section class="hero">
+  <div class="logo">
+    <svg viewBox="0 0 40 40" width="96" height="96"><path d="M4 4h32v32H4z M4 4l16 16L4 36" fill="none" stroke="currentColor" stroke-width="3"/></svg>
+    <span>SA2&nbsp;SCAN</span>
+  </div>
+  <p class="tagline">Analyse suspicious Windows executables with the frozen SA2 V3.2 static models.<br>Files are parsed, never executed.</p>
+
+  <div class="tabs" role="tablist">
+    <button class="tab active" data-tab="t-file" role="tab">FILE</button>
+    <button class="tab" data-tab="t-search" role="tab">SEARCH</button>
+  </div>
+
+  <div id="t-file" class="tabpane active">
+    <form id="upload-form" class="dropzone" action="{{ url_for('upload') }}" method="post" enctype="multipart/form-data">
+      <svg class="fp" viewBox="0 0 120 100" width="120" height="100" aria-hidden="true">
+        <path d="M40 8h30l14 14v68H40z" fill="none" stroke="currentColor" stroke-width="3"/>
+        <path d="M70 8v14h14" fill="none" stroke="currentColor" stroke-width="3"/>
+        <path d="M8 34h104" stroke="var(--accent)" stroke-width="4"/>
+        <g fill="none" stroke="currentColor" stroke-width="2" opacity=".8">
+          <path d="M52 66c0-8 5-14 10-14s10 6 10 14"/><path d="M56 70c0-6 3-10 6-10s6 4 6 10"/><path d="M48 62c1-12 7-18 14-18s13 6 14 18"/><path d="M62 62v14"/>
+        </g>
+      </svg>
+      <input id="file-input" type="file" name="file" hidden>
+      <label for="file-input" class="btn-outline big">Choose file</label>
+      <p class="muted small">or drop a file here · Windows PE (.exe / .dll / .sys), up to 50 MB</p>
+      <p id="upload-busy" class="muted" hidden>Uploading…</p>
+    </form>
+  </div>
+
+  <div id="t-search" class="tabpane">
+    <form class="big-search" action="{{ url_for('search') }}" method="get">
+      <input name="q" placeholder="SHA-256, SHA-1, MD5, file name or imphash" autofocus>
+      <button class="btn-outline">Search</button>
+    </form>
+  </div>
+
+  <p class="disclaimer">By submitting a file you agree that it is stored in the local SA2 quarantine for static analysis.
+    Verdicts come from machine-learning models with known limits (static features only, blind cohort of 567 files);
+    treat them as triage, not ground truth.</p>
+  <div class="api-banner">ⓘ Want to automate submissions? <a href="{{ url_for('api_doc') }}">Check the API</a>, or connect an
+    <strong>SA2 Sentinel</strong> EDR sensor using the key on the <a href="{{ url_for('admin_sensors') }}">Sensors page</a>.</div>
+</section>
+{% endblock %}

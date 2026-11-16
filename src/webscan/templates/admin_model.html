@@ -1,0 +1,38 @@
+{% extends "base_admin.html" %}
+{% block title %}Model{% endblock %}
+{% block body %}
+<div class="page-head"><h1>Model</h1></div>
+<div class="grid-hud">
+  <div class="panel">
+    <div class="panel-h"><h3>ACTIVE ENGINES · V3.2</h3></div>
+    <table class="tbl"><thead><tr><th>Engine</th><th>Role</th><th>Threshold in use</th><th>Source</th><th>Frozen threshold</th></tr></thead><tbody>
+    {% for name, t in thrs.items() %}
+      <tr><td><b>{{ name }}</b></td><td>{{ 'decides verdict' if name == 'pe_v3' else 'baseline (shown only)' }}</td>
+        <td class="mono">{{ '%.4f' % t.threshold }}</td><td>{{ t.source.replace('_', ' ') }}</td><td class="mono">{{ '%.4f' % t.frozen }}</td></tr>
+    {% endfor %}</tbody></table>
+    <p class="note">Calibrated threshold from <code>artifacts/deploy/calibration_temporal_benign.json</code>: {{ cal.n_benign }} temporal benign files,
+      target FPR {{ cal.target_fpr }}, achieved FPR {{ cal.achieved_fpr_at_threshold }}.</p>
+  </div>
+  <div class="panel">
+    <div class="panel-h"><h3>FREEZE VERIFICATION</h3></div>
+    {% if not bad %}<p class="green"><b>PASS</b>: every tracked model, manifest and source file matches <code>artifacts/v3.2/freeze/freeze_manifest.json</code>.</p>
+    {% else %}<p class="amber"><b>{{ bad | length }} file(s) differ from the freeze manifest.</b> Model pickles are scored as-is; differences are usually code or line-ending edits after the freeze.</p>
+      <ul class="small mono">{% for b in bad[:15] %}<li>{{ b }}</li>{% endfor %}</ul>{% endif %}
+  </div>
+  <div class="panel wide">
+    <div class="panel-h"><h3>BLIND EVALUATION (artifacts/v3.2/blind/blind_results.json)</h3><span class="muted small">run {{ blind.run_at }}</span></div>
+    {% if blind %}
+    <p class="small">{{ blind.n_blind }} files ({{ blind.n_benign }} benign, {{ blind.n_malicious }} malicious, {{ blind.n_groups }} groups). These numbers use the <b>frozen</b> threshold, not the calibrated one.</p>
+    <table class="tbl"><thead><tr><th>Arm</th><th>Threshold</th><th>TPR</th><th>TPR 95% CI</th><th>FPR</th><th>FPR 95% CI</th><th>TP</th><th>FP</th><th>ROC-AUC</th></tr></thead><tbody>
+    {% for key, v in blind.items() if v is mapping and v.fixed is defined %}
+      <tr><td><b>{{ key }}</b></td><td class="mono">{{ '%.4f' % v.threshold }}</td><td>{{ '%.3f' % v.fixed.tpr }}</td>
+        <td>{{ '%.3f' % v.fixed.tpr_ci95[0] }}–{{ '%.3f' % v.fixed.tpr_ci95[1] }}</td><td>{{ '%.4f' % v.fixed.fpr }}</td>
+        <td>{{ '%.4f' % v.fixed.fpr_ci95[0] }}–{{ '%.4f' % v.fixed.fpr_ci95[1] }}</td><td>{{ v.fixed.tp }}/{{ v.fixed.n_malicious }}</td>
+        <td>{{ v.fixed.fp }}/{{ v.fixed.n_benign }}</td><td>{{ '%.4f' % v.roc_auc if v.roc_auc is defined else '–' }}</td></tr>
+    {% endfor %}</tbody></table>
+    {% else %}<p class="muted">blind_results.json not found.</p>{% endif %}
+    <p class="note">Limitations: static PE features only; 158 benign blind files gives coarse FPR resolution; later V8/V9 EMBER+Binary Ninja blends are
+      not deployed here because their gain did not replicate (<code>docs/v9_results.md</code>).</p>
+  </div>
+</div>
+{% endblock %}

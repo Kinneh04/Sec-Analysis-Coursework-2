@@ -1,0 +1,16 @@
+{% extends "base.html" %}
+{% block title %}Processes{% endblock %}{% block heading %}Process Search{% endblock %}
+{% block body %}
+<section class="panel">
+  <form class="filters" method="get"><input name="q" placeholder="Name, path, SHA-256 or user…" value="{{ q }}"><button>Search</button>
+    <span class="muted small right">newest 500 · processes under Windows / Program Files are recorded but not hashed</span></form>
+  <table class="tbl"><thead><tr><th>First seen (UTC)</th><th>Process</th><th>PID</th><th>Parent</th><th>User</th><th>Path</th><th>SHA-256</th><th>Signature</th><th>Conns</th><th>Verdict</th></tr></thead><tbody>
+  {% for p in rows %}
+    <tr><td class="small">{{ p.first_seen }}</td><td><b>{{ p.name }}</b></td><td>{{ p.pid }}</td><td>{{ p.parent or '–' }}</td>
+      <td class="small">{{ p.username or '–' }}</td><td class="small path">{{ p.exe or '(access denied)' }}</td>
+      <td class="mono small">{% if p.sha256 %}<a href="{{ url_for('binaries', q=p.sha256) }}">{{ p.sha256[:12] }}…</a>{% else %}–{% endif %}</td>
+      <td>{{ p.signature or '–' }}</td><td>{{ p.conn_count }}</td><td>{{ p.verdict or p.state or '–' }}</td></tr>
+  {% else %}<tr><td colspan="10" class="muted">No processes recorded yet.</td></tr>{% endfor %}
+  </tbody></table>
+</section>
+{% endblock %}

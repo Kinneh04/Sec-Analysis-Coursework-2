@@ -1,0 +1,53 @@
+{% extends "base.html" %}
+{% block title %}Settings{% endblock %}{% block heading %}Settings &amp; Connection{% endblock %}
+{% block body %}
+<form method="post" class="settings">
+  <input type="hidden" name="csrf" value="{{ csrf }}">
+  <section class="panel">
+    <div class="ph"><h3>ADMIN PANEL CONNECTION (SA2 SCAN)</h3>
+      <span class="conn conn-{{ conn.state.replace(' ', '-') }} right">● {{ conn.state | title }}{% if conn.rtt_ms %} · {{ conn.rtt_ms }} ms{% endif %}</span></div>
+    {% if test %}<div class="testres conn-{{ test.state.replace(' ', '-') }}"><b>Test: {{ test.state | title }}</b>{% if test.rtt_ms %} · {{ test.rtt_ms }} ms{% endif %} · {{ test.detail }}
+      {% if test.thresholds %}<br><small>thresholds: {% for k, v in test.thresholds.items() %}{{ k }} {{ '%.4f' % v }} {% endfor %}</small>{% endif %}
+      <br><small>Not saved yet: press Save to use these settings.</small></div>{% endif %}
+    <div class="form-grid">
+      <label>Dashboard URL<input name="dashboard_url" value="{{ f.dashboard_url }}" placeholder="http://127.0.0.1:8000" required></label>
+      <label>API key<input name="api_key" type="password" autocomplete="off" value="{{ f.api_key if test else '' }}"
+        placeholder="{{ 'saved (leave blank to keep)' if cfg.api_key else 'paste from SA2 Scan → Admin → Sensors' }}"></label>
+      <label>Sensor name<input name="sensor_name" value="{{ f.sensor_name }}" maxlength="64"></label>
+      <label class="check"><input type="checkbox" name="auto_submit" {{ 'checked' if f.auto_submit == '1' }}> Auto-submit files to the dashboard</label>
+    </div>
+    <div class="btnrow">
+      <button name="action" value="test" formnovalidate>Test connection</button>
+      <button name="action" value="save" class="primary">Save</button>
+      <button name="action" value="disconnect" class="danger" formnovalidate>Disconnect</button>
+      <span class="muted small">Last OK: {{ conn.last_ok or 'never' }} · {{ conn.detail }}</span>
+    </div>
+  </section>
+
+  <section class="panel" id="lists">
+    <div class="ph"><h3>SUBMISSION POLICY</h3></div>
+    <div class="radio">
+      <label><input type="radio" name="submit_mode" value="allowlist" {{ 'checked' if f.submit_mode == 'allowlist' }}>
+        <b>Allowlist only</b>: upload only files whose path or SHA-256 is listed below (smoke tests, controlled demos). Default.</label>
+      <label><input type="radio" name="submit_mode" value="rules" {{ 'checked' if f.submit_mode == 'rules' }}>
+        <b>Rules</b>: also upload any PE whose rule score ≥ 2 (e.g. unsigned + in a user-writable folder) or that matches the watchlist.</label>
+    </div>
+    <div class="form-grid two">
+      <label>Allowlist (one path or SHA-256 per line; # comments)<textarea name="allowlist" rows="6" placeholder="%TEMP%\sa2_smoke\hello_benign.exe">{{ f.allowlist }}</textarea></label>
+      <label>Watchlist (re-alert on sight; one path or SHA-256 per line)<textarea name="watchlist" rows="6">{{ f.watchlist }}</textarea></label>
+    </div>
+  </section>
+
+  <section class="panel">
+    <div class="ph"><h3>COLLECTOR</h3><span class="muted small right">detection only: files are hashed and uploaded, never executed; nothing is killed or blocked</span></div>
+    <div class="form-grid">
+      <label>Poll interval (s)<input name="poll_seconds" type="number" step="0.5" min="0.5" value="{{ f.poll_seconds }}"></label>
+      <label>Max file size (MB)<input name="max_mb" type="number" min="1" value="{{ f.max_mb }}"></label>
+      <label class="span2">Watched folders (new PE files, top level, one per line; %VARS% allowed)<textarea name="watch_dirs" rows="4">{{ f.watch_dirs }}</textarea></label>
+    </div>
+    <div class="rules">{% for r in rules_all %}
+      <label class="check"><input type="checkbox" name="rule_{{ r }}" {{ 'checked' if r in enabled }}> <code>{{ r }}</code></label>{% endfor %}</div>
+    <div class="btnrow"><button name="action" value="save" class="primary">Save</button></div>
+  </section>
+</form>
+{% endblock %}

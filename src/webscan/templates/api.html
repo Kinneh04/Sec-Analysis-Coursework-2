@@ -1,0 +1,22 @@
+{% extends "base_public.html" %}
+{% block title %}API · SA2 Scan{% endblock %}
+{% block body %}
+<section class="page doc">
+  <h1>SA2 Scan API v1</h1>
+  <p>All endpoints need the header <code>X-API-Key</code>. Admins find and rotate the key on <a href="{{ url_for('admin_sensors') }}">Admin → Sensors</a>.
+     A wrong or missing key returns <code>401</code>.</p>
+  <table class="tbl">
+    <thead><tr><th>Method</th><th>Path</th><th>Purpose</th></tr></thead>
+    <tbody>
+      <tr><td>GET</td><td><code>/api/v1/ping</code></td><td>Connection test. Returns server name, model tag, thresholds.</td></tr>
+      <tr><td>GET</td><td><code>/api/v1/files/&lt;sha256&gt;</code></td><td>Report JSON (<code>200</code>) or <code>404</code> if unknown. Poll until <code>status</code> is <code>done</code> or <code>error</code>.</td></tr>
+      <tr><td>POST</td><td><code>/api/v1/files</code></td><td>Multipart: <code>file</code> + optional <code>meta</code> (JSON string). Returns <code>202 {sha256, status}</code>; <code>415</code> if not a PE file, <code>413</code> if over 50 MB.</td></tr>
+      <tr><td>POST</td><td><code>/api/v1/sensors/heartbeat</code></td><td>JSON <code>{sensor_id, hostname, agent_version, stats}</code>. Used by SA2 Sentinel every 30 s.</td></tr>
+    </tbody>
+  </table>
+  <h2>Example (PowerShell)</h2>
+  <pre class="raw">$h = @{ "X-API-Key" = "&lt;key&gt;" }
+Invoke-RestMethod -Headers $h {{ request.host_url }}api/v1/ping
+curl.exe -H "X-API-Key: &lt;key&gt;" -F "file=@C:\path\app.exe" -F "meta={\"source\":\"api\"}" {{ request.host_url }}api/v1/files</pre>
+</section>
+{% endblock %}

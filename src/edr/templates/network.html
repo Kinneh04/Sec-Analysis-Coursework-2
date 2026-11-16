@@ -1,0 +1,16 @@
+{% extends "base.html" %}
+{% block title %}Network{% endblock %}{% block heading %}Network Connections{% endblock %}
+{% block body %}
+<section class="panel">
+  <form class="filters" method="get"><input name="q" placeholder="Process, remote IP or port…" value="{{ q }}">
+    <label><input type="checkbox" name="nonstd" value="1" {{ 'checked' if nonstd }}> public IP on a non-standard port only</label><button>Filter</button>
+    <span class="muted small right">newest 500 · one row per new (process, local, remote) tuple</span></form>
+  <table class="tbl"><thead><tr><th>Time (UTC)</th><th>Process</th><th>PID</th><th>Local</th><th>Remote</th><th>State</th><th>Flag</th></tr></thead><tbody>
+  {% for c in rows %}
+    <tr class="{{ 'row-warn' if c.nonstd }}"><td class="small">{{ c.at }}</td><td>{{ c.process or '–' }}</td><td>{{ c.pid or '–' }}</td>
+      <td class="mono small">{{ c.laddr }}</td><td class="mono small">{{ c.rip }}:{{ c.rport }}</td><td>{{ c.status }}</td>
+      <td>{% if c.nonstd %}<span class="tag">nonstd_port</span>{% endif %}</td></tr>
+  {% else %}<tr><td colspan="7" class="muted">No connections recorded yet.</td></tr>{% endfor %}
+  </tbody></table>
+</section>
+{% endblock %}

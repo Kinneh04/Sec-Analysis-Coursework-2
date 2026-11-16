@@ -1,0 +1,65 @@
+paths:
+  malware_corpus: 'E:\MalwareBazaar\extracted'
+  malware_analysis_csv: 'E:\MalwareBazaar\analysis.csv'
+  bn_cache_dir: 'E:\MalwareBazaar\labeler\cache\bn'
+  benign_roots:
+    # Third-party first (round-robin priority)
+    - 'C:\Program Files\Mozilla Firefox'
+    - 'C:\Program Files\7-Zip'
+    - 'C:\Program Files\Git\cmd'
+    - 'C:\Program Files\Git\mingw64\bin'
+    - 'C:\Program Files\Python310'
+    - 'C:\Program Files\dotnet'
+    - 'C:\Program Files\Windows Defender'
+    - 'C:\Program Files\Common Files'
+    - 'C:\Program Files\Windows NT\Accessories'
+    - 'C:\Windows\SysWOW64'
+    - 'C:\Windows\System32'
+  artifacts_dir: './artifacts'
+analysis:
+  static_only: true
+  max_seconds_per_file: 120
+  max_file_size_mb: 50
+  cache_by_sha256: true
+  parallel_jobs: 1
+  bn_mcp_url: 'http://127.0.0.1:24642/mcp'
+  bn_mcp_max_decompile: 0
+  bn_use_triage: true
+  bn_v2_max_functions_per_file: 8
+  max_bn_mcp_calls: 30
+models:
+  random_seed: 42
+  algorithms: ['logistic_regression', 'random_forest', 'lightgbm']
+  feature_sets: ['pe', 'bn', 'pe_bn']
+evaluation:
+  primary_fpr: 0.01
+  secondary_fpr: 0.001
+  train_ratio: 0.6
+  val_ratio: 0.2
+  test_ratio: 0.2
+experiment:
+  matched_cohort_target: 500
+  max_malware_samples: 500
+  max_benign_samples: 500
+  benign_max_per_root: 80
+  benign_root_caps:
+    'C:\Windows\System32': 55
+    'C:\Windows\SysWOW64': 55
+    default: 80
+  max_bn_mcp_benign: 180
+  pilot_inventory_limit: 50
+  bn_pilot_small_pe_bytes: 8192
+  bn_scale:
+    batch_size: 25
+    daily_budget_seconds: 7200
+    max_retries: 2
+    per_binary_timeout_seconds: 120
+    accelerated: false
+    accelerated_batch_size: 50
+    accelerated_max_retries: 1
+    reboot_on_mcp_failure: true
+    max_bn_reboots_per_batch: 10
+    max_extract_file_mb: 4
+    skip_path_contains:
+      - 'analyzers\dotnet'
+      - '\packs\microsoft.netcore.app.ref\'

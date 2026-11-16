@@ -1,0 +1,38 @@
+{% extends "base.html" %}
+{% from "_charts.html" import linechart, ranked %}
+{% block title %}Statistics{% endblock %}{% block heading %}Statistics{% endblock %}
+{% block body %}
+{% set t = st.totals %}{% set g = st.gauges %}
+<div class="toolbar">
+  <div class="seg"><a class="{{ 'on' if minutes == 60 }}" href="{{ url_for('stats') }}">Last 60 min</a><a class="{{ 'on' if minutes == 1440 }}" href="{{ url_for('stats', range='24h') }}">Last 24 h</a></div>
+  <a class="btn" href="{{ url_for('stats', export='csv') }}">Export CSV (per-minute, 7-day retention)</a>
+  <span class="muted small" data-autorefresh="15">auto-refresh 15 s</span>
+</div>
+<div class="kpis big">
+  <div><b>{{ g.uptime_s // 60 }}<small> min</small></b><span>AGENT UPTIME</span></div>
+  <div><b>{{ t.processes_observed or 0 }}</b><span>PROCESSES OBSERVED</span></div>
+  <div><b>{{ t.connections_observed or 0 }}</b><span>CONNECTIONS</span></div>
+  <div><b>{{ g.unique_remote_ips }}</b><span>UNIQUE REMOTE IPs</span></div>
+  <div><b>{{ g.binaries_known }}</b><span>UNIQUE BINARIES</span></div>
+  <div><b>{{ t.uploads_sent or 0 }}</b><span>UPLOADS SENT</span></div>
+  <div><b>{{ t.upload_dedup or 0 }}</b><span>DEDUP HITS</span></div>
+  <div><b class="{{ 'red' if t.upload_fail }}">{{ t.upload_fail or 0 }}</b><span>UPLOAD FAILURES</span></div>
+  <div><b>{{ g.verdict_latency_s_median if g.verdict_latency_s_median is not none else '–' }}<small> s</small></b><span>MEDIAN UPLOAD→VERDICT</span></div>
+  <div><b>{{ g.verdict_latency_s_p95 if g.verdict_latency_s_p95 is not none else '–' }}<small> s</small></b><span>P95 UPLOAD→VERDICT</span></div>
+  <div><b class="red">{{ t.verdict_malicious or 0 }}</b><span>MALICIOUS VERDICTS</span></div>
+  <div><b class="green">{{ t.verdict_benign or 0 }}</b><span>BENIGN VERDICTS</span></div>
+  <div><b>{{ g.alerts_open }}</b><span>OPEN ALERTS</span></div>
+  <div><b>{{ (g.dwell_s_median // 60) if g.dwell_s_median is not none else '–' }}<small> min</small></b><span>MEDIAN DWELL (ANALYST)</span></div>
+  <div><b>{{ '%.0f%%' % (g.false_positive_rate * 100) if g.false_positive_rate is not none else '–' }}</b><span>FALSE-POSITIVE RATE</span></div>
+  <div><b>{{ g.loop_ms_median if g.loop_ms_median is not none else '–' }}<small> ms</small></b><span>COLLECTOR LOOP</span></div>
+  <div><b>{{ '%.0f%%' % (g.heartbeat_success_rate * 100) if g.heartbeat_success_rate is not none else '–' }}</b><span>HEARTBEAT SUCCESS</span></div>
+</div>
+<div class="grid">
+  <section class="panel wide"><div class="ph"><h3>TELEMETRY</h3></div>{{ linechart(telemetry, label='last 24 h' if minutes == 1440 else 'last 60 min') }}</section>
+  <section class="panel wide"><div class="ph"><h3>SUBMISSION PIPELINE</h3></div>{{ linechart(pipeline, label='last 24 h' if minutes == 1440 else 'last 60 min') }}</section>
+  <section class="panel"><div class="ph"><h3>RULE HITS (UNIQUE BINARIES)</h3></div>{{ ranked(rule_hits) }}</section>
+  <section class="panel"><div class="ph"><h3>ALL COUNTERS (SINCE INSTALL)</h3></div>
+    <table class="tbl compact"><tbody>{% for k, v in t.items() %}<tr><td>{{ k.replace('_', ' ') }}</td><td class="mono">{{ v }}</td></tr>
+    {% else %}<tr><td class="muted">No counters yet.</td></tr>{% endfor %}</tbody></table></section>
+</div>
+{% endblock %}

@@ -1,0 +1,39 @@
+{% extends "base_admin.html" %}
+{% from "_macros.html" import badge, pill %}
+{% block title %}Submissions{% endblock %}
+{% block body %}
+<div class="page-head"><h1>Submissions</h1>
+  <div class="btn-group">
+    <a class="btn-light" href="{{ url_for('admin_submissions', export='csv', **args) }}">Export CSV ({{ total }})</a>
+    <a class="btn-light" href="{{ url_for('admin_submissions', export='json', **args) }}">Export JSON ({{ total }})</a>
+  </div>
+</div>
+<form class="filters panel" method="get">
+  <input name="q" placeholder="hash, name or imphash" value="{{ args.q }}">
+  <select name="verdict"><option value="">any verdict</option>{% for v in ['malicious','benign','error'] %}<option {{ 'selected' if args.verdict == v }}>{{ v }}</option>{% endfor %}</select>
+  <select name="status"><option value="">any status</option>{% for v in ['queued','scanning','done','error'] %}<option {{ 'selected' if args.status == v }}>{{ v }}</option>{% endfor %}</select>
+  <select name="source"><option value="">any source</option>{% for v in ['web','edr','api'] %}<option {{ 'selected' if args.source == v }}>{{ v }}</option>{% endfor %}</select>
+  <select name="sensor"><option value="">any sensor</option>{% for v in sensors %}<option {{ 'selected' if args.sensor == v }}>{{ v }}</option>{% endfor %}</select>
+  <label>score <input name="min" type="number" step="0.01" min="0" max="1" placeholder="min" value="{{ args.min }}"></label>
+  <input name="max" type="number" step="0.01" min="0" max="1" placeholder="max" value="{{ args.max }}">
+  <label>from <input name="from" type="date" value="{{ args['from'] }}"></label>
+  <label>to <input name="to" type="date" value="{{ args.to }}"></label>
+  <button class="btn-solid">Filter</button> <a href="{{ url_for('admin_submissions') }}">Reset</a>
+</form>
+<div class="panel">
+  <table class="tbl"><thead><tr><th>Score</th><th>Name</th><th>SHA-256</th><th>Verdict</th><th>pe_v3</th><th>Sources</th><th>Subs</th><th>Size</th><th>Last seen (UTC)</th></tr></thead><tbody>
+  {% for f in rows %}
+    <tr><td>{{ badge(f.probability) }}</td><td>{{ f.name }}</td>
+      <td><a class="mono" href="{{ url_for('report', sha=f.sha256) }}">{{ f.sha256[:24] }}…</a></td>
+      <td>{{ pill(f.verdict or f.status) }}</td><td class="mono">{{ '%.4f' % f.probability if f.probability is not none else '–' }}</td>
+      <td>{{ f.sources }}</td><td>{{ f.n_sub }}</td><td>{{ '{:,}'.format(f.size) }}</td><td class="small">{{ f.last_seen }}</td></tr>
+  {% else %}<tr><td colspan="9" class="muted">Nothing matches.</td></tr>{% endfor %}
+  </tbody></table>
+  <div class="pager">Showing {{ rows | length }} of {{ total }} · page {{ page }} of {{ pages }}
+    {% if page > 1 %}<a href="{{ url_for('admin_submissions', page=page-1, **args) }}">‹ prev</a>{% endif %}
+    {% if page < pages %}<a href="{{ url_for('admin_submissions', page=page+1, **args) }}">next ›</a>{% endif %}
+    <form method="get" class="inline">{% for k, v in args.items() %}<input type="hidden" name="{{ k }}" value="{{ v }}">{% endfor %}
+      Jump to page <input name="page" type="number" min="1" max="{{ pages }}" class="tiny"></form>
+  </div>
+</div>
+{% endblock %}

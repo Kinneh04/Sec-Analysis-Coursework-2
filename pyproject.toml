@@ -1,0 +1,26 @@
+[project]
+name = "sa2-malware-ml"
+version = "0.1.0"
+description = "Binary Ninja–enhanced static PE malware classification (ICT3214 SA2)"
+requires-python = ">=3.11"
+dependencies = [
+  "pefile>=2024.8",
+  "pandas>=2.0",
+  "pyarrow>=15",
+  "pyyaml>=6",
+  "scikit-learn>=1.4",
+  "lightgbm>=4.0",
+  "numpy>=1.26",
+]
+
+[project.scripts]
+sa2-inventory = "src.inventory:main"
+sa2-pe = "src.pe_features:main"
+sa2-bn = "src.bn_features:main"
+sa2-dataset = "src.build_dataset:main"
+sa2-train = "src.train:main"
+sa2-eval = "src.evaluate:main"
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["src*"]

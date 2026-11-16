@@ -1,0 +1,28 @@
+{% extends "base.html" %}
+{% from "_charts.html" import badge %}
+{% block title %}Alerts{% endblock %}{% block heading %}Triage Alerts{% endblock %}
+{% block body %}
+<section class="panel">
+  <form class="filters" method="get">
+    <input name="q" placeholder="Search hash, path or cause…" value="{{ q }}">
+    <div class="seg">{% for s in [''] + statuses | list %}<a class="{{ 'on' if st == s }}" href="{{ url_for('alerts', status=s, q=q) }}">{{ s or 'All' }}</a>{% endfor %}</div>
+  </form>
+  <form method="post">
+    <input type="hidden" name="csrf" value="{{ csrf }}">
+    <div class="btnrow"><span class="muted small">Mark selected</span>
+      {% for s in statuses %}<button name="status" value="{{ s }}">{{ s }}</button>{% endfor %}</div>
+    <table class="tbl"><thead><tr><th><input type="checkbox" data-checkall></th><th>Score</th><th>Source</th><th>Host</th><th>Cause</th>
+      <th>Verdict</th><th>Status</th><th>Created (UTC)</th><th>Note</th><th></th></tr></thead><tbody>
+    {% for a in rows %}
+      <tr><td><input type="checkbox" name="ids" value="{{ a.id }}"></td><td>{{ badge(a.score, a.verdict) }}</td>
+        <td title="{{ a.path }}">{{ (a.path or '').split('\\')[-1] }}<br><small class="mono muted">{{ a.sha256[:16] }}…</small></td>
+        <td>{{ a.host }}</td><td><span class="cause">{{ a.cause }}</span></td><td>{{ a.verdict }}</td>
+        <td><span class="st st-{{ a.status.replace(' ', '-') }}">{{ a.status }}</span></td><td class="small">{{ a.created }}</td>
+        <td class="small muted">{{ a.note or '' }}</td><td><a href="{{ report_url(a.sha256) }}" target="_blank">Open report ›</a></td></tr>
+    {% else %}<tr><td colspan="10" class="muted">No alerts.</td></tr>{% endfor %}
+    </tbody></table>
+  </form>
+  <p class="muted small">An alert is raised for every file the sensor submits. Benign verdicts are auto-resolved (note “auto”); dwell time and the
+    false-positive rate on the Statistics page count analyst-closed alerts only.</p>
+</section>
+{% endblock %}
