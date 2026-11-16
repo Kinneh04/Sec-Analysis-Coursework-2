@@ -14,6 +14,7 @@ artifacts/v3.2/*
 !artifacts/v3.2/models/final_pe_v3.pkl
 !artifacts/v3.2/models/final_pe_v1s.pkl
 !artifacts/v3.2/freeze/
+!artifacts/v3.2/feature_reference.json
 !artifacts/v3.2/blind/
 artifacts/v3.2/blind/*
 !artifacts/v3.2/blind/blind_results.json

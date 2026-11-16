@@ -4,13 +4,13 @@ ICT3214 Coursework 2. This repository holds three things:
 
 | Part | What it is | Where |
 |---|---|---|
-| **SA2 Scan** | VirusTotal-style uploader and admin panel. Scores Windows PE files with the frozen **V3.2** LightGBM models. | `src/webscan/`, port **8000** |
+| **SA2 Scan** | VirusTotal-style analyst console: upload or search files, read a report that explains *why* each verdict was reached, and track past results and correlations on a dashboard. Scores Windows PE files with the frozen **V3.2** LightGBM models. | `src/webscan/`, port **8000** |
 | **SA2 Sentinel** | On-machine EDR agent with a Carbon-Black-style console. Watches processes, network connections and downloads, then sends selected executables to SA2 Scan. | `src/edr/`, port **8001** |
 | **Research pipeline** | Static PE + Binary Ninja feature extraction, the three classifiers, and the V1–V9 experiments behind the model. | `src/`, `docs/` |
 
 Everything is **static analysis**: files are hashed and parsed, never executed. The EDR detects only; it never kills or blocks anything.
 
-![SA2 Scan report](docs/screenshots/scan_report_edr.png)
+![SA2 Scan report](docs/screenshots/scan_report_zcode.png)
 
 ---
 
@@ -27,7 +27,7 @@ git clone https://github.com/Kinneh04/Sec-Analysis-Coursework-2.git
 cd Sec-Analysis-Coursework-2
 ```
 
-1. **Start the dashboard.** Double-click **`dashboard.setup.bat`**. The first run creates `.venv` and installs `requirements.txt`, which takes 1–3 minutes. The browser then opens http://127.0.0.1:8000. Keep the console window open: it shows the **admin password** and the **EDR API key**.
+1. **Start the dashboard.** Double-click **`dashboard.setup.bat`**. The first run creates `.venv` and installs `requirements.txt`, which takes 1–3 minutes. The browser then opens http://127.0.0.1:8000. Keep the console window open: it shows the **sign-in password** and the **EDR API key**. Every page requires sign-in; only the `/api/v1/*` endpoints use the API key instead.
 2. **Start the EDR.** Double-click **`edr.setup.bat`**. To see every process and connection, right-click it and choose *Run as administrator*. The browser opens http://127.0.0.1:8001/settings.
 3. **Connect them.** On the EDR Settings page:
    - Dashboard URL: `http://127.0.0.1:8000`.
@@ -36,7 +36,8 @@ cd Sec-Analysis-Coursework-2
 
    Within 30 s the sensor shows as *Online* in the admin panel.
 4. **Try it.**
-   - **Upload:** go to http://127.0.0.1:8000 and choose any Windows `.exe` or `.dll`. You get a report with Detection / Details / Why / Source / Raw tabs and JSON / CSV / PDF export.
+   - **Upload:** on the home page (http://127.0.0.1:8000) choose any Windows `.exe` or `.dll`, or drop it anywhere. The report shows a detection ring, a plain-English assessment and DETECTION / REASONING / SIGNALS / DETAILS / ORIGIN / RAW tabs, with JSON / CSV / PDF export and an analyst decision (confirmed / false positive / benign).
+   - **Dashboard:** http://127.0.0.1:8000/dashboard shows past results and correlations: detections over time, score history, engine agreement (scatter + Pearson r), signal co-occurrence with flag rates, a heatmap of which factor groups drive the highest scores, and the review queue.
    - **EDR transport:** the EDR starts in **Allowlist only** mode. Under Settings → Allowlist, add the full path of a benign `.exe`, then Save. The file is uploaded, scanned, and listed in the EDR's Binary Search and on the dashboard. A worked example is in `dashboard_edr_plan.md` §9.
    - **Normal monitoring:** switch the EDR to **Rules** mode. It then uploads any PE whose rule score is ≥ 2, for example an unsigned file in a user-writable folder.
 
@@ -83,7 +84,9 @@ The EDR console always binds to `127.0.0.1`. Its settings (dashboard URL, key, a
 
 - **Decision model:** `pe_v3` decides the verdict, using 2,105 static PE features (pefile only). The threshold is the **deploy-calibrated 0.9603** (`artifacts/deploy/calibration_temporal_benign.json`, 246 benign files). `pe_v1s` (274 features) is shown as a baseline only.
 - **Evidence:** V3.2 met its preregistered blind evaluation, with TPR 0.738 vs 0.597 at 0.63% FPR on 567 files (`docs/v3.2_results.md`). Later EMBER2024 + Binary Ninja blends are **not** deployed, because their gain did not replicate (`docs/v9_results.md`).
-- **Explanation:** the **Why** tab shows the top SHAP contributions from LightGBM `pred_contrib`. These describe the model, not proven behaviour.
+- **Explanation (REASONING tab):** a score waterfall by factor group and the top 12 SHAP contributions (LightGBM `pred_contrib`), each translated into plain English and compared with typical benign / malware values from the training pool (`artifacts/v3.2/feature_reference.json`, built by `python -m src.webscan.reference`).
+- **Context (SIGNALS tab):** facts the model does not weigh directly: signer, installer/packer format, API capability groups, structural anomalies, EDR origin. Each says what it means and whether it is a known model bias.
+- **Assessment:** a heuristic note correlating the reasons with the signals, e.g. "Likely false positive: the main reasons are shared by every NSIS package and the file is validly signed". It never changes the model verdict.
 - **Limits:** static features only. Packed or obfuscated payloads may be missed. Treat verdicts as triage, not ground truth.
 
 ---
@@ -118,7 +121,7 @@ No SOTA claim is made. See `docs/conclusions.md`, `docs/v3.2_results.md` and `do
 ```
 dashboard.setup.bat, edr.setup.bat   one-click start (scripts/ensure_venv.bat builds .venv)
 requirements.txt                     pinned runtime (scikit-learn==1.7.2 matches the frozen pickles)
-src/webscan/                         SA2 Scan (Flask): app.py, scanner.py, templates/, static/
+src/webscan/                         SA2 Scan (Flask): app.py, scanner.py, explain.py (reasons/signals/assessment), reference.py, templates/, static/
 src/edr/                             SA2 Sentinel (Flask + agent): app.py, core.py, rules.py, client.py
 src/common/                          shared helpers (hashing, sqlite, Authenticode)
 src/v3/                              V3.2 feature extractors + scorer used by SA2 Scan

@@ -1,0 +1,202 @@
+{% set ICONS = {
+  'overview': '<rect x="3" y="3" width="7" height="9" rx="1.5"/><rect x="14" y="3" width="7" height="5" rx="1.5"/><rect x="14" y="12" width="7" height="9" rx="1.5"/><rect x="3" y="16" width="7" height="5" rx="1.5"/>',
+  'upload': '<path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><path d="M17 8l-5-5-5 5"/><path d="M12 3v12"/>',
+  'list': '<path d="M8 6h13M8 12h13M8 18h13"/><circle cx="3.5" cy="6" r="1"/><circle cx="3.5" cy="12" r="1"/><circle cx="3.5" cy="18" r="1"/>',
+  'chart': '<path d="M3 3v18h18"/><path d="M7 15l4-4 3 3 5-6"/>',
+  'sensor': '<rect x="2" y="4" width="20" height="13" rx="2"/><path d="M8 21h8M12 17v4"/>',
+  'model': '<rect x="5" y="5" width="14" height="14" rx="2"/><rect x="9" y="9" width="6" height="6"/><path d="M9 1v4M15 1v4M9 19v4M15 19v4M1 9h4M1 15h4M19 9h4M19 15h4"/>',
+  'settings': '<path d="M4 21v-7M4 10V3M12 21v-9M12 8V3M20 21v-5M20 12V3M1 14h6M9 8h6M17 16h6"/>',
+  'book': '<path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/>',
+  'search': '<circle cx="11" cy="11" r="7"/><path d="M21 21l-4.3-4.3"/>',
+  'shield': '<path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/><path d="M9 12l2 2 4-4"/>',
+  'alert': '<path d="M10.3 3.9L1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z"/><path d="M12 9v4M12 17h.01"/>',
+  'check': '<circle cx="12" cy="12" r="10"/><path d="M8 12l3 3 5-6"/>',
+  'x': '<circle cx="12" cy="12" r="10"/><path d="M15 9l-6 6M9 9l6 6"/>',
+  'clock': '<circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/>',
+  'file': '<path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/>',
+  'download': '<path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><path d="M7 10l5 5 5-5"/><path d="M12 15V3"/>',
+  'print': '<path d="M6 9V2h12v7"/><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/><rect x="6" y="14" width="12" height="8"/>',
+  'refresh': '<path d="M21 12a9 9 0 1 1-3-6.7L21 8"/><path d="M21 3v5h-5"/>',
+  'copy': '<rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/>',
+  'sun': '<circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/>',
+  'moon': '<path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z"/>',
+  'logout': '<path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><path d="M16 17l5-5-5-5"/><path d="M21 12H9"/>',
+  'info': '<circle cx="12" cy="12" r="10"/><path d="M12 16v-4M12 8h.01"/>',
+  'up': '<path d="M7 17L17 7M7 7h10v10"/>',
+  'down': '<path d="M17 7L7 17M17 17H7V7"/>',
+  'activity': '<path d="M22 12h-4l-3 9L9 3l-3 9H2"/>',
+  'globe': '<circle cx="12" cy="12" r="10"/><path d="M2 12h20M12 2a15 15 0 0 1 0 20M12 2a15 15 0 0 0 0 20"/>',
+  'key': '<circle cx="7.5" cy="15.5" r="5.5"/><path d="M21 2l-9.6 9.6M15.5 7.5l3 3L22 7l-3-3"/>',
+  'package': '<path d="M21 16V8a2 2 0 0 0-1-1.7l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.7l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/><path d="M3.3 7L12 12l8.7-5M12 22V12"/>',
+  'user': '<circle cx="12" cy="8" r="4"/><path d="M4 21v-1a6 6 0 0 1 6-6h4a6 6 0 0 1 6 6v1"/>',
+  'eye': '<path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/>',
+  'plus': '<path d="M12 5v14M5 12h14"/>',
+  'minus': '<path d="M5 12h14"/>',
+  'layers': '<path d="M12 2L2 7l10 5 10-5-10-5z"/><path d="M2 17l10 5 10-5M2 12l10 5 10-5"/>',
+} %}
+
+{% macro icon(name, cls='') -%}
+<svg class="i {{ cls }}" viewBox="0 0 24 24" aria-hidden="true">{{ ICONS.get(name, ICONS['info']) | safe }}</svg>
+{%- endmacro %}
+
+{% macro verdict_pill(f) -%}
+{% if f.status in ('queued', 'scanning') %}<span class="pill {{ f.status }}">{{ f.status | title }}</span>
+{% elif f.status == 'error' %}<span class="pill error">Error</span>
+{% elif f.verdict == 'malicious' %}<span class="pill malicious">Malicious</span>
+{% elif f.probability is not none and f.probability >= 0.5 %}<span class="pill borderline">Borderline</span>
+{% else %}<span class="pill benign">Benign</span>{% endif %}
+{%- endmacro %}
+
+{% macro meter(p, band) -%}
+<div class="meter" title="pe_v3 score {{ '%.4f' % p if p is not none else 'n/a' }} (threshold {{ '%.4f' % thr }})">
+  <div class="track"><div class="fill {{ band }}" style="width: {{ (p or 0) * 100 }}%"></div><div class="thr" style="left: {{ thr * 100 }}%"></div></div>
+  <span class="num">{{ '%.3f' % p if p is not none else '–' }}</span>
+</div>
+{%- endmacro %}
+
+{% macro disp_pill(d) -%}
+{% if d %}<span class="pill {{ 'bad' if d == 'confirmed' else ('good' if d in ('false_positive', 'benign_ok') else 'info') }}">{{ DISPOSITIONS[d] }}</span>
+{% else %}<span class="pill neutral">Unreviewed</span>{% endif %}
+{%- endmacro %}
+
+{% macro sparkline(values, cls='s1') -%}
+{% set mx = (values | max) if values else 0 %}{% set n = values | length %}
+{% if n > 1 and mx > 0 %}
+<svg class="spark" viewBox="0 0 90 30" preserveAspectRatio="none" aria-hidden="true">
+  <polyline class="{{ cls }}" fill="none" stroke-width="1.8" vector-effect="non-scaling-stroke"
+    points="{% for v in values %}{{ 90 * loop.index0 / (n - 1) }},{{ 27 - 24 * v / mx }} {% endfor %}"/>
+</svg>{% endif %}
+{%- endmacro %}
+
+{% macro kpi(label, value, icon_name, tone='slate', foot='', spark=None, spark_cls='s1', href=None) -%}
+<{{ 'a' if href else 'div' }} class="card kpi tone-{{ tone }}" {% if href %}href="{{ href }}" style="text-decoration:none;color:inherit"{% endif %}>
+  <div class="label"><span class="ico">{{ icon(icon_name, 'sm') }}</span>{{ label }}</div>
+  <div class="vrow"><div class="value">{{ value | safe }}</div>{% if spark %}{{ sparkline(spark, spark_cls) }}{% endif %}</div>
+  {% if foot %}<div class="foot">{{ foot | safe }}</div>{% endif %}
+</{{ 'a' if href else 'div' }}>
+{%- endmacro %}
+
+{# segments = [(css_color_class, label, value)] #}
+{% macro donut(segments, center_value, center_label) -%}
+{% set total = segments | map(attribute=2) | sum %}
+{% set ns = namespace(off=25) %}
+<div class="donut-wrap">
+  <svg class="donut" viewBox="0 0 42 42" role="img" aria-label="{{ center_label }}">
+    <circle cx="21" cy="21" r="15.915" fill="none" stroke="var(--surface-3)" stroke-width="5"/>
+    {% for cls, label, v in segments if v %}
+      {% set pct = 100 * v / total %}
+      <circle cx="21" cy="21" r="15.915" fill="none" stroke="var(--{{ cls }})" stroke-width="5"
+        stroke-dasharray="{{ pct }} {{ 100 - pct }}" stroke-dashoffset="{{ ns.off }}"><title>{{ label }}: {{ v }}</title></circle>
+      {% set ns.off = ns.off - pct %}
+    {% endfor %}
+    <text x="21" y="22" text-anchor="middle" font-size="7.5" font-weight="700">{{ center_value }}</text>
+    <text x="21" y="27.5" text-anchor="middle" class="lbl">{{ center_label }}</text>
+  </svg>
+  <div class="donut-legend">
+    {% for cls, label, v in segments %}<div><i style="width:10px;height:10px;border-radius:3px;background:var(--{{ cls }})"></i>{{ label }}<b>{{ v }}</b>
+      <span class="muted small" style="width:42px;text-align:right">{{ '%.0f%%' % (100 * v / total) if total else '0%' }}</span></div>{% endfor %}
+  </div>
+</div>
+{%- endmacro %}
+
+{% macro gauge(p, band) -%}
+{% set L = 175.93 %}{% set a = pi * (1 - thr) %}
+<svg class="gauge" viewBox="0 0 132 82" role="img" aria-label="score {{ p }}">
+  <path d="M10 72 A56 56 0 0 1 122 72" class="track" fill="none" stroke-width="11" stroke-linecap="round"/>
+  {% if p is not none %}<path d="M10 72 A56 56 0 0 1 122 72" fill="none" stroke-width="11" stroke-linecap="round"
+    stroke="var(--{{ {'high':'red','elevated':'amber','low':'green'}.get(band, 'faint') }})" stroke-dasharray="{{ L * p }} {{ L }}"/>{% endif %}
+  <line x1="{{ 66 + 47 * cos(a) }}" y1="{{ 72 - 47 * sin(a) }}" x2="{{ 66 + 65 * cos(a) }}" y2="{{ 72 - 65 * sin(a) }}" stroke="var(--text)" stroke-width="2" opacity=".7"/>
+  <text x="66" y="66" text-anchor="middle" font-size="22" font-weight="700">{{ '%.3f' % p if p is not none else '–' }}</text>
+  <text x="66" y="80" text-anchor="middle" font-size="9" fill="var(--muted)">pe_v3 score</text>
+</svg>
+{%- endmacro %}
+
+{% macro histogram(bins) -%}
+{% set mx = (bins | max) or 1 %}
+<div class="histo">
+  {% for n in bins %}{% set lo = loop.index0 / 20 %}
+  <div class="b {{ 'hot' if lo + 0.05 > thr else ('mid' if lo >= 0.5 else '') }}" title="{{ '%.2f' % lo }}–{{ '%.2f' % (lo + 0.05) }}: {{ n }} file(s)">
+    <span style="height: {{ 100 * n / mx }}%"></span></div>
+  {% endfor %}
+  <div class="thr" style="left: {{ thr * 100 }}%"><span>threshold {{ '%.3f' % thr }}</span></div>
+</div>
+<div class="axis"><span>0</span><span>0.25</span><span>0.5</span><span>0.75</span><span>1</span></div>
+{%- endmacro %}
+
+{% macro linechart(series, height=170) -%}
+{% set ns = namespace(mx=1, n=2) %}
+{% for k, v in series.items() %}{% for x in v %}{% if x > ns.mx %}{% set ns.mx = x %}{% endif %}{% endfor %}{% if v | length > ns.n %}{% set ns.n = v | length %}{% endif %}{% endfor %}
+<svg class="line" viewBox="0 0 600 {{ height }}" preserveAspectRatio="none" role="img">
+  {% for y in [0, 0.25, 0.5, 0.75, 1] %}<line x1="0" x2="600" y1="{{ (height - 10) * (1 - y) + 5 }}" y2="{{ (height - 10) * (1 - y) + 5 }}" class="grid"/>{% endfor %}
+  {% for k, v in series.items() %}<polyline class="s{{ loop.index }}" points="{% for x in v %}{{ 600 * loop.index0 / (ns.n - 1) }},{{ (height - 10) * (1 - x / ns.mx) + 5 }} {% endfor %}"/>{% endfor %}
+</svg>
+<div class="legend">{% for k in series %}<span><i class="s{{ loop.index }}" style="background:currentColor"></i>{{ k.replace('_', ' ') }}</span>{% endfor %}<span>peak {{ ns.mx }}</span></div>
+{%- endmacro %}
+
+{% macro sig_tag(s) -%}
+<span class="tag {{ 'format' if s.id.startswith('format_') else s.severity }}" title="{{ s.meaning }}">{{ s.title | truncate(38, True) }}</span>
+{%- endmacro %}
+
+{% macro empty(icon_name, text) -%}
+<div class="empty">{{ icon(icon_name) }}<div>{{ text }}</div></div>
+{%- endmacro %}
+
+{% macro mark() -%}
+<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round" stroke-linecap="round" aria-hidden="true">
+  <path d="M12 2.2l8.5 4.9v9.8L12 21.8l-8.5-4.9V7.1z"/><path d="M6.6 12h10.8"/><path d="M9.6 8.3L7.6 12l2 3.7M14.4 8.3l2 3.7-2 3.7"/></svg>
+{%- endmacro %}
+
+{# VT-style detection ring: flags / total, coloured by outcome #}
+{% macro ring(flags, total, cls) -%}
+{% set C = 351.86 %}
+<div class="ring {{ cls }}">
+  <svg viewBox="0 0 130 130" aria-hidden="true">
+    <circle cx="65" cy="65" r="56" fill="none" stroke="var(--panel-3)" stroke-width="9"/>
+    {% if flags %}<circle cx="65" cy="65" r="56" fill="none" stroke="var(--red)" stroke-width="9" stroke-dasharray="{{ C * flags / (total or 1) }} {{ C }}"/>
+    {% elif cls == 'borderline' %}<circle cx="65" cy="65" r="56" fill="none" stroke="var(--amber)" stroke-width="3"/>
+    {% elif cls == 'benign' %}<circle cx="65" cy="65" r="56" fill="none" stroke="var(--green)" stroke-width="3"/>{% endif %}
+  </svg>
+  <div class="val"><b>{{ flags }}</b><span>/ {{ total }}</span></div>
+</div>
+{%- endmacro %}
+
+{# score-vs-score scatter. points: [{x, y, cls, signed, name, sha}] #}
+{% macro scatter(points, thr_x, thr_y, xlab, ylab) -%}
+{% set X0, X1, Y0, Y1 = 46, 350, 14, 266 %}
+<svg class="plot" viewBox="0 0 370 300" role="img" aria-label="{{ xlab }} vs {{ ylab }}">
+  <rect class="zone" x="{{ X0 + (X1 - X0) * thr_x }}" y="{{ Y0 }}" width="{{ (X1 - X0) * (1 - thr_x) }}" height="{{ (Y1 - Y0) * (1 - thr_y) }}"/>
+  {% for t in [0, 0.25, 0.5, 0.75, 1] %}
+    <line class="gl" x1="{{ X0 }}" x2="{{ X1 }}" y1="{{ Y1 - (Y1 - Y0) * t }}" y2="{{ Y1 - (Y1 - Y0) * t }}"/>
+    <text x="{{ X0 - 8 }}" y="{{ Y1 - (Y1 - Y0) * t + 3 }}" text-anchor="end">{{ t }}</text>
+    <text x="{{ X0 + (X1 - X0) * t }}" y="{{ Y1 + 15 }}" text-anchor="middle">{{ t }}</text>
+  {% endfor %}
+  <line class="diag" x1="{{ X0 }}" y1="{{ Y1 }}" x2="{{ X1 }}" y2="{{ Y0 }}"/>
+  <line class="thr" x1="{{ X0 + (X1 - X0) * thr_x }}" x2="{{ X0 + (X1 - X0) * thr_x }}" y1="{{ Y0 }}" y2="{{ Y1 }}"/>
+  <line class="thr" y1="{{ Y1 - (Y1 - Y0) * thr_y }}" y2="{{ Y1 - (Y1 - Y0) * thr_y }}" x1="{{ X0 }}" x2="{{ X1 }}"/>
+  <line class="ax" x1="{{ X0 }}" x2="{{ X1 }}" y1="{{ Y1 }}" y2="{{ Y1 }}"/><line class="ax" x1="{{ X0 }}" x2="{{ X0 }}" y1="{{ Y0 }}" y2="{{ Y1 }}"/>
+  <text x="{{ (X0 + X1) / 2 }}" y="{{ Y1 + 31 }}" text-anchor="middle">{{ xlab }}</text>
+  <text transform="translate(12 {{ (Y0 + Y1) / 2 }}) rotate(-90)" text-anchor="middle">{{ ylab }}</text>
+  {% for p in points %}
+    <a href="{{ url_for('report', sha=p.sha) }}"><circle class="{{ p.cls }} {{ 'signed' if p.signed else 'unsigned' }}" r="5.5"
+      cx="{{ X0 + (X1 - X0) * p.x }}" cy="{{ Y1 - (Y1 - Y0) * p.y }}"><title>{{ p.name }}: {{ '%.3f' % p.x }} / {{ '%.3f' % p.y }}{{ ' (signed)' if p.signed }}</title></circle></a>
+  {% endfor %}
+</svg>
+{%- endmacro %}
+
+{# score over time. points: [{t (0..1), y, cls, signed, name, sha}], labels: [(t, text)] #}
+{% macro timeline_plot(points, labels) -%}
+{% set X0, X1, Y0, Y1 = 40, 1230, 12, 196 %}
+<svg class="plot" viewBox="0 0 1250 226" role="img" aria-label="Score over time">
+  <rect class="zone" x="{{ X0 }}" y="{{ Y0 }}" width="{{ X1 - X0 }}" height="{{ (Y1 - Y0) * (1 - thr) }}"/>
+  {% for t in [0, 0.5, 1] %}<line class="gl" x1="{{ X0 }}" x2="{{ X1 }}" y1="{{ Y1 - (Y1 - Y0) * t }}" y2="{{ Y1 - (Y1 - Y0) * t }}"/>
+    <text x="{{ X0 - 8 }}" y="{{ Y1 - (Y1 - Y0) * t + 3 }}" text-anchor="end">{{ t }}</text>{% endfor %}
+  <line class="thr" x1="{{ X0 }}" x2="{{ X1 }}" y1="{{ Y1 - (Y1 - Y0) * thr }}" y2="{{ Y1 - (Y1 - Y0) * thr }}"/>
+  <text x="{{ X1 }}" y="{{ Y1 - (Y1 - Y0) * thr - 4 }}" text-anchor="end">threshold {{ '%.3f' % thr }}</text>
+  <line class="ax" x1="{{ X0 }}" x2="{{ X1 }}" y1="{{ Y1 }}" y2="{{ Y1 }}"/>
+  {% for t, txt in labels %}<text x="{{ X0 + (X1 - X0) * t }}" y="{{ Y1 + 16 }}" text-anchor="{{ 'start' if t == 0 else ('end' if t == 1 else 'middle') }}">{{ txt }}</text>{% endfor %}
+  {% for p in points %}
+    <a href="{{ url_for('report', sha=p.sha) }}"><circle class="{{ p.cls }} {{ 'signed' if p.signed else 'unsigned' }}" r="5"
+      cx="{{ X0 + (X1 - X0) * p.t }}" cy="{{ Y1 - (Y1 - Y0) * p.y }}"><title>{{ p.name }}: {{ '%.3f' % p.y }} · {{ p.when }}</title></circle></a>
+  {% endfor %}
+</svg>
+{%- endmacro %}

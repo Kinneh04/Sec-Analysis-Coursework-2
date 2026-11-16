@@ -1,0 +1,70 @@
+{% extends "base.html" %}
+{% from "_ui.html" import icon, empty %}
+{% block title %}Insights{% endblock %}
+{% block heading %}Insights{% endblock %}
+{% block body %}
+<div class="grid">
+  <section class="card c7">
+    <div class="card-h"><h3>Signals by outcome</h3><span class="sub">how often each context signal appears in flagged vs. clean files</span></div>
+    <div class="card-b flush">
+      {% if sigs %}
+      <table class="table compact"><thead><tr><th>Signal</th><th>Severity</th><th style="text-align:right">Flagged</th><th style="text-align:right">Not flagged</th><th>Share flagged</th></tr></thead><tbody>
+      {% for s, c in sigs %}{% set tot = c.values() | sum %}
+        <tr title="{{ s.meaning }}"><td><b>{{ s.title }}</b></td>
+          <td><span class="tag {{ s.severity }}">{{ s.severity }}</span></td>
+          <td class="tnum red" style="text-align:right">{{ c.malicious }}</td><td class="tnum" style="text-align:right">{{ tot - c.malicious }}</td>
+          <td style="width:160px"><div class="meter"><div class="track"><div class="fill high" style="width:{{ 100 * c.malicious / tot }}%"></div></div>
+            <span class="num">{{ '%.0f%%' % (100 * c.malicious / tot) }}</span></div></td></tr>
+      {% endfor %}</tbody></table>
+      {% else %}{{ empty('chart', 'No scanned files yet.') }}{% endif %}
+    </div>
+  </section>
+
+  <section class="card c5">
+    <div class="card-h"><h3>Most common reasons for flags</h3><span class="sub">{{ n_mal }} malicious file(s)</span></div>
+    <div class="card-b">
+      {% if feats %}{% set mx = feats | map(attribute=1) | max %}
+        {% for title, n, avg in feats %}
+          <div class="hbar" style="grid-template-columns: minmax(0, 2fr) 1fr 80px"><span class="name" title="{{ title }}">{{ title }}</span>
+            <div class="track"><span class="bg-red" style="width:{{ 100 * n / mx }}%"></span></div><span class="v">{{ n }}× · +{{ '%.2f' % avg }}</span></div>
+        {% endfor %}
+        <p class="muted small" style="margin:10px 0 0">Reasons that appear in the top drivers of flagged files: count × average push (log-odds).</p>
+      {% else %}{{ empty('info', 'No malicious verdicts yet.') }}{% endif %}
+    </div>
+  </section>
+
+  <section class="card c12">
+    <div class="card-h"><h3>Known model biases (training data)</h3><span class="sub">V3.2 training pool: {{ ref.n.benign if ref.n else '?' }} benign / {{ ref.n.malicious if ref.n else '?' }} malware files</span></div>
+    <div class="card-b">
+      {% if ref.classes %}
+      <table class="table compact"><thead><tr><th>File kind</th><th style="text-align:right">Benign</th><th style="text-align:right">Malware</th><th>Malware share</th><th>What it means for verdicts</th></tr></thead><tbody>
+        {% for key, label, note in [
+          ('nsis', 'NSIS installers / uninstallers', 'Almost every NSIS file the model saw was malware, so benign NSIS files are often flagged (known false-positive class).'),
+          ('upx', 'UPX-packed files', 'Only malware was UPX-packed in training; any UPX file will look suspicious to the model.'),
+          ('dotnet', '.NET assemblies', 'Balanced between classes; no strong format bias.'),
+          ('signature_block', 'Files with an embedded signature', 'Signed files are mostly benign in training, so an embedded signature pulls scores down.'),
+          ('high_entropy_overlay', 'High-entropy appended data', 'Common in both classes (signatures are appended data too); not a malware sign on its own.')] %}
+          {% set c = ref.classes[key] %}{% set tot = c.benign + c.malicious %}
+          <tr><td><b>{{ label }}</b></td><td class="tnum" style="text-align:right">{{ c.benign }}</td><td class="tnum red" style="text-align:right">{{ c.malicious }}</td>
+            <td style="width:150px"><div class="meter"><div class="track"><div class="fill high" style="width:{{ 100 * c.malicious / tot if tot else 0 }}%"></div></div>
+              <span class="num">{{ '%.0f%%' % (100 * c.malicious / tot) if tot else '–' }}</span></div></td><td class="small">{{ note }}</td></tr>
+        {% endfor %}</tbody></table>
+      <p class="muted small" style="margin:10px 0 0">Counts come from <code>artifacts/v3.2/feature_reference.json</code> (built by <code>python -m src.webscan.reference</code>). NSIS/UPX counts are approximate (hashed section names).</p>
+      {% else %}<p class="muted">Reference statistics not available.</p>{% endif %}
+    </div>
+  </section>
+
+  <section class="card c12">
+    <div class="card-h"><h3>Import matrix</h3><span class="sub">most common imported DLLs and their most common functions across {{ n }} file(s)</span>
+      <div class="actions"><div class="seg"><a class="{{ 'on' if only == 'all' }}" href="?only=all">All scanned</a><a class="{{ 'on' if only == 'flagged' }}" href="?only=flagged">Flagged only</a></div></div></div>
+    <div class="card-b">
+      <div class="matrix">
+      {% for dll, n_files, fns in cols %}
+        <div class="mcol"><div class="mh"><span class="mono">{{ dll }}</span><span>{{ n_files }}</span></div>
+          {% for fn, c in fns %}<div class="mc"><span>{{ fn }}</span><b>{{ c }}</b></div>{% endfor %}</div>
+      {% else %}{{ empty('package', 'No imports to show.') }}{% endfor %}
+      </div>
+    </div>
+  </section>
+</div>
+{% endblock %}

@@ -1,45 +1,72 @@
-{% extends "base_public.html" %}
-{% block body %}
-<section class="hero">
-  <div class="logo">
-    <svg viewBox="0 0 40 40" width="96" height="96"><path d="M4 4h32v32H4z M4 4l16 16L4 36" fill="none" stroke="currentColor" stroke-width="3"/></svg>
-    <span>SA2&nbsp;SCAN</span>
-  </div>
-  <p class="tagline">Analyse suspicious Windows executables with the frozen SA2 V3.2 static models.<br>Files are parsed, never executed.</p>
+{% extends "base.html" %}
+{% from "_ui.html" import icon, mark, meter, verdict_pill, sig_tag %}
+{% block title %}Analyze{% endblock %}
+{% block page %}
+<section class="home">
+  <div class="logo">{{ mark() }}<span>SA2&nbsp;SCAN</span></div>
+  <p class="tagline">Analyse suspicious Windows executables with the frozen SA2 V3.2 static models, and see <b>why</b> each verdict was reached.
+    Files are parsed, never executed.</p>
 
   <div class="tabs" role="tablist">
-    <button class="tab active" data-tab="t-file" role="tab">FILE</button>
-    <button class="tab" data-tab="t-search" role="tab">SEARCH</button>
+    <button class="on" data-tab="t-file">File</button>
+    <button data-tab="t-search">Search</button>
   </div>
 
-  <div id="t-file" class="tabpane active">
-    <form id="upload-form" class="dropzone" action="{{ url_for('upload') }}" method="post" enctype="multipart/form-data">
-      <svg class="fp" viewBox="0 0 120 100" width="120" height="100" aria-hidden="true">
-        <path d="M40 8h30l14 14v68H40z" fill="none" stroke="currentColor" stroke-width="3"/>
-        <path d="M70 8v14h14" fill="none" stroke="currentColor" stroke-width="3"/>
-        <path d="M8 34h104" stroke="var(--accent)" stroke-width="4"/>
-        <g fill="none" stroke="currentColor" stroke-width="2" opacity=".8">
-          <path d="M52 66c0-8 5-14 10-14s10 6 10 14"/><path d="M56 70c0-6 3-10 6-10s6 4 6 10"/><path d="M48 62c1-12 7-18 14-18s13 6 14 18"/><path d="M62 62v14"/>
-        </g>
-      </svg>
+  <div id="t-file" class="tabpane on">
+    <form id="upload-form" action="{{ url_for('upload') }}" method="post" enctype="multipart/form-data">
+      <label class="drop" for="file-input">
+        <svg viewBox="0 0 120 100" width="120" height="100" aria-hidden="true">
+          <path d="M42 8h30l14 14v70H42z" fill="none" stroke="currentColor" stroke-width="2.5"/>
+          <path d="M72 8v14h14" fill="none" stroke="currentColor" stroke-width="2.5"/>
+          <path d="M14 36h92" stroke="var(--accent)" stroke-width="3.5"/>
+          <g fill="none" stroke="currentColor" stroke-width="1.8" opacity=".8">
+            <path d="M54 70c0-8 4.5-13 10-13s10 5 10 13"/><path d="M58 73c0-6 2.5-9.5 6-9.5s6 3.5 6 9.5"/>
+            <path d="M50 66c1-12 7-18 14-18s13 6 14 18"/><path d="M64 66v14"/></g>
+        </svg>
+        <span class="btn" style="padding:9px 46px;font-size:14px">Choose file</span>
+        <span class="muted small">or drop it anywhere on this page · Windows PE (.exe, .dll, .sys) up to 50 MB</span>
+        <span class="muted small" id="upload-busy" hidden>Uploading and queuing for analysis…</span>
+      </label>
       <input id="file-input" type="file" name="file" hidden>
-      <label for="file-input" class="btn-outline big">Choose file</label>
-      <p class="muted small">or drop a file here · Windows PE (.exe / .dll / .sys), up to 50 MB</p>
-      <p id="upload-busy" class="muted" hidden>Uploading…</p>
     </form>
   </div>
 
   <div id="t-search" class="tabpane">
-    <form class="big-search" action="{{ url_for('search') }}" method="get">
-      <input name="q" placeholder="SHA-256, SHA-1, MD5, file name or imphash" autofocus>
-      <button class="btn-outline">Search</button>
+    <form class="bigsearch" action="{{ url_for('search') }}" method="get">
+      <input type="text" name="q" placeholder="SHA-256, SHA-1, MD5, file name or imphash">
+      <button class="btn primary">Search</button>
     </form>
   </div>
 
-  <p class="disclaimer">By submitting a file you agree that it is stored in the local SA2 quarantine for static analysis.
-    Verdicts come from machine-learning models with known limits (static features only, blind cohort of 567 files);
-    treat them as triage, not ground truth.</p>
-  <div class="api-banner">ⓘ Want to automate submissions? <a href="{{ url_for('api_doc') }}">Check the API</a>, or connect an
-    <strong>SA2 Sentinel</strong> EDR sensor using the key on the <a href="{{ url_for('admin_sensors') }}">Sensors page</a>.</div>
+  <div class="homestats">
+    <a href="{{ url_for('submissions') }}"><b>{{ stats.total }}</b>files analysed</a>
+    <a href="{{ url_for('submissions', verdict='malicious') }}"><b class="red">{{ stats.flagged }}</b>flagged</a>
+    <a href="{{ url_for('submissions', disposition='unreviewed', sort='score') }}"><b class="amber">{{ stats.review }}</b>awaiting review</a>
+    <a href="{{ url_for('sensors') }}"><b class="green">{{ stats.sensors }}</b>sensors online</a>
+  </div>
+
+  <p class="note">Uploaded files are kept read-only in the local quarantine for static analysis and are never served back. Verdicts come from
+    machine-learning models with known limits (static features only; some installer formats are biased), so read the reasoning before acting.</p>
+  <div class="banner">{{ icon('info', 'sm') }} Want to automate submissions? Connect an <b>SA2 Sentinel</b> EDR sensor or use the
+    <a href="{{ url_for('settings') }}">API</a>. Past results and correlations are on the <a href="{{ url_for('overview') }}">dashboard</a>.</div>
 </section>
+
+{% if recent %}
+<section class="card" style="max-width:1100px;margin:22px auto 0">
+  <div class="card-h"><h3>Recent analyses</h3><div class="actions"><a class="btn sm quiet" href="{{ url_for('submissions') }}">All submissions</a></div></div>
+  <div class="card-b flush"><table class="table">
+    <tbody>
+    {% for f in recent %}
+      <tr data-href="{{ url_for('report', sha=f.sha256) }}">
+        <td style="width:46px">{% if f.verdict == 'malicious' %}<span class="red">{{ icon('alert') }}</span>{% elif f.status in ('queued','scanning') %}<span class="blue">{{ icon('clock') }}</span>{% else %}<span class="{{ 'amber' if f.risk == 'elevated' else 'green' }}">{{ icon('check') }}</span>{% endif %}</td>
+        <td><span class="fname">{{ f.name }}</span><span class="hash">{{ f.sha256 }}</span></td>
+        <td>{% if f.assessment %}<span class="pill {{ f.assessment.tone }}">{{ f.assessment.label }}</span>{% else %}{{ verdict_pill(f) }}{% endif %}</td>
+        <td style="width:170px">{{ meter(f.probability, f.risk) }}</td>
+        <td class="small muted nowrap" title="{{ f.last_seen }}">{{ ago(f.last_seen) }}</td>
+      </tr>
+    {% endfor %}
+    </tbody>
+  </table></div>
+</section>
+{% endif %}
 {% endblock %}

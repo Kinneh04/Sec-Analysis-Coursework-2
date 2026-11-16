@@ -1,0 +1,186 @@
+{% extends "base.html" %}
+{% from "_ui.html" import icon, kpi, meter, verdict_pill, donut, histogram, sig_tag, empty, scatter, timeline_plot %}
+{% block title %}Dashboard{% endblock %}
+{% block crumbs %}<div class="crumbs" data-autorefresh="60">Past results and correlations · refreshes every 60 s</div>{% endblock %}
+{% block heading %}Dashboard{% endblock %}
+{% block headactions %}<div class="row right"><a class="btn sm quiet" href="{{ url_for('submissions', disposition='unreviewed', sort='score') }}">Review queue ({{ st.unreviewed }})</a>
+  <a class="btn sm primary" href="{{ url_for('home') }}">{{ icon('upload', 'sm') }}Analyze file</a></div>{% endblock %}
+{% block body %}
+<div class="kpis">
+  {{ kpi('Files analysed', '{:,}'.format(st.total), 'file', 'accent', '+' ~ st.today ~ ' today', spark.total, 's1', url_for('submissions')) }}
+  {{ kpi('Malicious', st.malicious, 'alert', 'red', ('%.0f%%' % (100 * st.malicious / st.total) if st.total else '0%') ~ ' of files', spark.malicious, 's4', url_for('submissions', verdict='malicious')) }}
+  {{ kpi('Borderline', st.borderline, 'eye', 'amber', '0.50 – ' ~ ('%.2f' % thr) ~ ', not flagged', spark.borderline, 's3', url_for('submissions', verdict='borderline')) }}
+  {{ kpi('Benign', st.benign, 'check', 'green', 'score below 0.50', spark.benign, 's2', url_for('submissions', verdict='benign')) }}
+  {{ kpi('Awaiting review', st.unreviewed, 'user', 'slate', 'flagged or borderline', None, 's1', url_for('submissions', disposition='unreviewed', sort='score')) }}
+  {{ kpi('Analyst verdicts', st.confirmed ~ ' / ' ~ st.false_positives, 'user', 'slate', 'confirmed / false positive', None, 's1', url_for('submissions', disposition='false_positive')) }}
+  {{ kpi('Sensors online', st.sensors_online ~ '<small> / ' ~ st.sensors_total ~ '</small>', 'sensor', 'slate',
+         'median scan ' ~ (st.median_ms ~ ' ms' if st.median_ms is not none else '–'), None, 's1', url_for('sensors')) }}
+</div>
+
+<div class="grid">
+  <section class="card c8">
+    <div class="card-h"><h3>Detections · last 14 days</h3><span class="sub">submissions by outcome, all sources</span></div>
+    <div class="card-b">
+      <div class="bars">
+        {% for d in days %}{% set c = per_day[d] %}{% set tot = c.values() | sum %}
+        <div class="col" title="{{ d }}: {{ c.malicious }} malicious, {{ c.borderline }} borderline, {{ c.benign }} benign, {{ c.error + c.pending }} other">
+          <div class="stackbar" style="height: {{ 100 * tot / day_max }}%">
+            <span class="bg-green" style="flex: {{ c.benign }}"></span><span class="bg-amber" style="flex: {{ c.borderline }}"></span>
+            <span class="bg-red" style="flex: {{ c.malicious }}"></span><span class="bg-slate" style="flex: {{ c.error + c.pending }}"></span>
+          </div><small>{{ d[5:] }}</small></div>
+        {% endfor %}
+      </div>
+      <div class="legend" style="margin-top:12px"><span><i class="bg-red"></i>Malicious</span><span><i class="bg-amber"></i>Borderline</span>
+        <span><i class="bg-green"></i>Benign</span><span><i class="bg-slate"></i>Error / pending</span></div>
+    </div>
+  </section>
+  <section class="card c4">
+    <div class="card-h"><h3>Verdict mix</h3></div>
+    <div class="card-b">{{ donut([('red', 'Malicious', mix[0][2]), ('amber', 'Borderline', mix[1][2]), ('green', 'Benign', mix[2][2]),
+                                  ('violet', 'Error', mix[3][2]), ('blue', 'Pending', mix[4][2])], st.total, 'files') }}</div>
+  </section>
+
+  <section class="card c12">
+    <div class="card-h"><h3>Score history</h3><span class="sub">every analysed file by first-seen time · shaded band = flagged region · ringed dots are validly signed</span></div>
+    <div class="card-b">
+      {% if corr.timeline %}{{ timeline_plot(corr.timeline, corr.labels) }}
+      <div class="legend" style="margin-top:8px"><span><i class="bg-red"></i>Malicious</span><span><i class="bg-amber"></i>Borderline</span><span><i class="bg-green"></i>Benign</span><span><i class="ring"></i>Signed</span></div>
+      {% else %}{{ empty('chart', 'No scored files yet.') }}{% endif %}
+    </div>
+  </section>
+
+  <section class="card c5">
+    <div class="card-h"><h3>Engine agreement</h3><span class="sub">pe_v3 vs pe_v1s score per file</span></div>
+    <div class="card-b">
+      {% if corr.scatter %}{{ scatter(corr.scatter, thr, corr.thr_v1s, 'pe_v3 score (decides verdict)', 'pe_v1s score (baseline)') }}
+      <div class="statline">
+        <span>Pearson r <b>{{ '%.2f' % corr.pearson if corr.pearson is not none else 'n/a' }}</b></span>
+        <span>Same decision <b>{{ corr.agree }} / {{ corr.scatter | length }}</b></span>
+      </div>
+      <p class="muted small" style="margin:8px 0 0">Points in the shaded corner are flagged by both engines. A high r means the engines share their mistakes too:
+        "2 / 2" is not two independent opinions.</p>
+      {% else %}{{ empty('chart', 'No scored files yet.') }}{% endif %}
+    </div>
+  </section>
+
+  <section class="card c7">
+    <div class="card-h"><h3>Signal co-occurrence</h3><span class="sub">files sharing each pair of context signals, and how often each ends up flagged</span></div>
+    <div class="card-b flush" style="padding:10px 14px">
+      {% if corr.co_ids %}{% set dmax = (corr.co_counts | max) or 1 %}
+      <table class="heat">
+        <thead><tr><th></th>{% for t in corr.co_titles %}<th title="{{ t }}"><span class="rot">{{ t | truncate(20, True) }}</span></th>{% endfor %}<th>flag rate</th></tr></thead>
+        <tbody>
+        {% for row in corr.co %}{% set i = loop.index0 %}
+          <tr><th class="rowh" title="{{ corr.co_titles[i] }}">{{ corr.co_titles[i] }}</th>
+            {% for v in row %}<td title="{{ corr.co_titles[i] }} + {{ corr.co_titles[loop.index0] }}: {{ v }} file(s)"
+              style="background: color-mix(in srgb, var(--accent) {{ (100 * v / dmax) | round | int }}%, var(--panel-2)); color: {{ 'var(--text)' if v else 'var(--faint)' }}">{{ v or '·' }}</td>{% endfor %}
+            {% set fr = corr.flag_rate[i] %}
+            <td class="rate" style="background: color-mix(in srgb, var(--red) {{ (60 * fr) | round | int }}%, var(--panel-2))"
+              title="{{ '%.0f%%' % (100 * fr) }} of files with this signal were flagged (base rate {{ '%.0f%%' % (100 * corr.base_rate) }})">{{ '%.0f%%' % (100 * fr) }}</td></tr>
+        {% endfor %}
+        </tbody>
+      </table>
+      <p class="muted small" style="margin:8px 4px 0">Base rate: <b>{{ '%.0f%%' % (100 * corr.base_rate) }}</b> of scored files are flagged. Signals with a flag rate well above it
+        are correlated with malicious verdicts. This is correlation with the <i>model's</i> verdicts, so a format bias (e.g. NSIS) shows up here too.</p>
+      {% else %}{{ empty('chart', 'No signals yet.') }}{% endif %}
+    </div>
+  </section>
+
+  <section class="card c12">
+    <div class="card-h"><h3>What drives the highest scores</h3><span class="sub">factor-group contributions (log-odds) for the 12 highest-scoring files · red pushes towards malicious, green towards benign</span></div>
+    <div class="card-b flush" style="padding:10px 14px">
+      {% if corr.heat %}
+      <table class="heat">
+        <thead><tr><th></th><th>score</th>{% for g in corr.heat_groups %}<th title="{{ g }}"><span class="rot">{{ g }}</span></th>{% endfor %}</tr></thead>
+        <tbody>
+        {% for h in corr.heat %}
+          <tr>
+            <th class="rowh"><a href="{{ url_for('report', sha=h.sha) }}" style="color:inherit">{{ h.name | truncate(30, True) }}</a>
+              {% if h.nsis %}<span class="tag low">NSIS</span>{% endif %}{% if h.signed %}<span class="tag positive">signed</span>{% endif %}</th>
+            <td class="rate" style="color: var(--{{ 'red' if h.cls == 'malicious' else ('amber' if h.cls == 'borderline' else 'green') }}); font-family: var(--mono)">{{ '%.3f' % h.p }}</td>
+            {% for c in h.cells %}{% set a = (100 * (c | abs) / corr.hmax) | round | int %}
+              <td title="{{ corr.heat_groups[loop.index0] }}: {{ '%+.2f' % c }}"
+                style="background: color-mix(in srgb, var(--{{ 'red' if c > 0 else 'green' }}) {{ a }}%, var(--panel-2)); color: {{ 'var(--text)' if a > 8 else 'var(--faint)' }}">{{ '%+.1f' % c if (c | abs) >= 0.05 else '·' }}</td>
+            {% endfor %}
+          </tr>
+        {% endfor %}
+        </tbody>
+      </table>
+      <p class="muted small" style="margin:8px 4px 0">Read across a row to see why one file scored high; read down a column to see which factor group the model leans on.
+        When unrelated files light up the same columns (e.g. text strings + compression for NSIS uninstallers), the score describes a shared format rather than each file.</p>
+      {% else %}{{ empty('chart', 'No scored files yet.') }}{% endif %}
+    </div>
+  </section>
+
+  <section class="card c8">
+    <div class="card-h"><h3>Needs attention</h3><span class="sub">flagged, borderline or failed and not yet reviewed</span></div>
+    <div class="card-b flush">
+      {% if attention %}
+      <table class="table">
+        <thead><tr><th>Score</th><th>File</th><th>Assessment &amp; main reason</th></tr></thead>
+        <tbody>
+        {% for f in attention %}
+          <tr data-href="{{ url_for('report', sha=f.sha256) }}">
+            <td style="width:160px">{{ meter(f.probability, f.risk) }}</td>
+            <td><span class="fname">{{ f.name }}</span><span class="hash">{{ f.sha256[:20] }}…</span>
+              <div class="chips" style="margin-top:4px">{% for s in f.chips[:3] %}{{ sig_tag(s) }}{% endfor %}</div></td>
+            <td style="min-width:220px">{% if f.assessment %}<span class="pill {{ f.assessment.tone }}">{{ f.assessment.label }}</span>{% else %}{{ verdict_pill(f) }}{% endif %}
+              {% if f.top_reason %}<div class="small clamp2" style="margin-top:6px;color:var(--text-2)">{{ f.top_reason.title }} <span class="muted">= {{ f.top_reason.value }}</span></div>{% endif %}</td>
+          </tr>
+        {% endfor %}
+        </tbody>
+      </table>
+      {% else %}{{ empty('check', 'Nothing waiting: every flagged or borderline file has an analyst decision.') }}{% endif %}
+    </div>
+  </section>
+
+  <section class="card c4">
+    <div class="card-h"><h3>Why files get flagged</h3><span class="sub">avg. push per flagged file</span></div>
+    <div class="card-b">
+      {% if reasons_agg %}{% set mx = reasons_agg | map(attribute=1) | max %}
+        {% for label, avg, n in reasons_agg %}
+          <div class="hbar"><span class="name" title="{{ label }}">{{ label }}</span>
+            <div class="track"><span class="bg-red" style="width: {{ 100 * avg / mx }}%"></span></div><span class="v">+{{ '%.2f' % avg }}</span></div>
+        {% endfor %}
+      {% else %}{{ empty('info', 'No malicious verdicts yet.') }}{% endif %}
+      <div class="section-t" style="margin-top:18px">Score distribution</div>
+      {{ histogram(bins) }}
+    </div>
+  </section>
+
+  <section class="card c6">
+    <div class="card-h"><h3>Recent activity</h3><div class="actions"><a class="btn sm quiet" href="{{ url_for('submissions') }}">All</a></div></div>
+    <div class="card-b flush">
+      {% if recent %}
+      <table class="table compact"><tbody>
+        {% for r in recent %}
+          <tr data-href="{{ url_for('report', sha=r.sha256) }}">
+            <td class="nowrap small muted" title="{{ r.at }}">{{ ago(r.at) }}</td>
+            <td><span class="fname" style="max-width:220px">{{ r.filename }}</span></td>
+            <td>{% if r.source == 'edr' %}<span class="tag">{{ icon('sensor', 'sm') }} {{ r.sensor_id }}</span>{% else %}<span class="tag">{{ r.source }}</span>{% endif %}</td>
+            <td>{{ verdict_pill(r) }}</td>
+          </tr>
+        {% endfor %}
+      </tbody></table>
+      {% else %}{{ empty('upload', 'No submissions yet.') }}{% endif %}
+    </div>
+  </section>
+
+  <section class="card c6">
+    <div class="card-h"><h3>EDR sensors</h3><div class="actions"><a class="btn sm quiet" href="{{ url_for('sensors') }}">Manage</a></div></div>
+    <div class="card-b flush">
+      {% if sensors %}
+      <table class="table compact"><tbody>
+        {% for s in sensors %}{% set t = s.stats.totals or {} %}
+          <tr data-href="{{ url_for('sensor', sid=s.sensor_id) }}">
+            <td><span class="pill {{ 'good' if s.online else 'neutral' }}">{{ 'Online' if s.online else 'Offline' }}</span></td>
+            <td><b>{{ s.sensor_id }}</b><br><span class="muted small">heartbeat {{ ago(s.last_heartbeat) }}</span></td>
+            <td class="small tnum" style="text-align:right">{{ t.uploads_sent or 0 }} uploads · {{ '{:,}'.format(t.processes_observed or 0) }} processes</td>
+          </tr>
+        {% endfor %}
+      </tbody></table>
+      {% else %}{{ empty('sensor', 'No sensor connected yet.') }}{% endif %}
+    </div>
+  </section>
+</div>
+{% endblock %}

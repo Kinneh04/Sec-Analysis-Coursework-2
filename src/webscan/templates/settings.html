@@ -1,0 +1,38 @@
+{% extends "base.html" %}
+{% from "_ui.html" import icon %}
+{% block title %}Settings & API{% endblock %}
+{% block heading %}Settings &amp; API{% endblock %}
+{% block body %}
+<div class="grid">
+  <section class="card c6">
+    <div class="card-h"><h3>API key</h3><span class="sub">used by EDR sensors and scripts</span></div>
+    <div class="card-b">
+      <div class="keybox"><code id="api-key" data-secret="{{ api_key }}">••••••••••••••••••••••••</code>
+        <button class="btn sm ghost" data-reveal="api-key">{{ icon('eye', 'sm') }}Show</button><button class="btn sm ghost" data-copy-from="api-key">{{ icon('copy', 'sm') }}Copy</button></div>
+      <p class="muted small">Rotate it on <a href="{{ url_for('sensors') }}">EDR sensors</a>. Every connected sensor then needs the new key.</p>
+    </div>
+  </section>
+  <section class="card c6">
+    <div class="card-h"><h3>Console</h3></div>
+    <div class="card-b">
+      <dl class="kv"><dt>Admin password</dt><dd>{{ 'Set by SA2_ADMIN_PASSWORD' if env_pw else 'Generated on first run, printed in the console window' }}</dd>
+        <dt>Data folder</dt><dd class="mono small">{{ data_dir }}</dd><dt>Bind address</dt><dd class="mono">{{ base }}</dd></dl>
+      <form method="post" style="margin-top:14px" onsubmit="return confirm('Re-analyse every stored file with the current model and explanation code?')">
+        <input type="hidden" name="action" value="rescan"><button class="btn sm">{{ icon('refresh', 'sm') }}Re-analyse all files</button>
+        <span class="muted small">Refreshes explanations after an update; verdicts only change if the model files change.</span></form>
+    </div>
+  </section>
+  <section class="card c12">
+    <div class="card-h"><h3>API reference</h3><span class="sub">header <code>X-API-Key</code> on every call; wrong or missing key → 401</span></div>
+    <div class="card-b flush"><table class="table"><thead><tr><th>Method</th><th>Path</th><th>Purpose</th></tr></thead><tbody>
+      <tr><td><span class="tag">GET</span></td><td class="mono">/api/v1/ping</td><td>Connection test: server name, model tag, thresholds.</td></tr>
+      <tr><td><span class="tag">GET</span></td><td class="mono">/api/v1/files/&lt;sha256&gt;</td><td>Full report JSON (200) or 404. Poll until <code>status</code> is <code>done</code> or <code>error</code>. Includes <code>assessment</code>, <code>explanation</code> and <code>all_signals</code>.</td></tr>
+      <tr><td><span class="tag">POST</span></td><td class="mono">/api/v1/files</td><td>Multipart <code>file</code> + optional <code>meta</code> (JSON string). 202 <code>{sha256, status}</code>; 415 not a PE; 413 over 50 MB.</td></tr>
+      <tr><td><span class="tag">POST</span></td><td class="mono">/api/v1/sensors/heartbeat</td><td>JSON <code>{sensor_id, hostname, agent_version, stats}</code>, sent by SA2 Sentinel every 30 s.</td></tr>
+    </tbody></table></div>
+    <div class="card-b"><pre class="raw">$h = @{ "X-API-Key" = "&lt;key&gt;" }
+Invoke-RestMethod -Headers $h {{ base }}/api/v1/ping
+curl.exe -H "X-API-Key: &lt;key&gt;" -F "file=@C:\path\app.exe" -F "meta={\"source\":\"api\"}" {{ base }}/api/v1/files</pre></div>
+  </section>
+</div>
+{% endblock %}

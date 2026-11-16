@@ -1,0 +1,24 @@
+{% from "_ui.html" import icon, meter, verdict_pill, disp_pill, sig_tag, empty %}
+{% macro filetable(rows, show_disp=True) -%}
+{% if rows %}
+<table class="table">
+  <thead><tr><th>Score</th><th>File</th><th>Outcome</th><th>Assessment</th><th>Main reason</th>{% if show_disp %}<th>Analyst</th>{% endif %}<th>Seen</th></tr></thead>
+  <tbody>
+  {% for f in rows %}
+    <tr data-href="{{ url_for('report', sha=f.sha256) }}">
+      <td style="width:160px">{{ meter(f.probability, f.risk) }}</td>
+      <td><span class="fname" title="{{ f.name }}">{{ f.name }}</span>
+        <span class="hash">{{ f.sha256[:16] }}… · {{ f.size | filesize }}{% if f.pe_format %} · {{ f.pe_format }} {{ 'DLL' if f.is_dll else 'EXE' }}{% endif %}</span>
+        <div class="chips" style="margin-top:5px">{% for s in f.chips %}{{ sig_tag(s) }}{% endfor %}
+          {% if f.sources %}{% for src in f.sources.split(',') %}<span class="tag">{{ icon('sensor' if src == 'edr' else 'upload', 'sm') }} {{ src }}</span>{% endfor %}{% endif %}</div></td>
+      <td>{{ verdict_pill(f) }}</td>
+      <td>{% if f.assessment %}<span class="pill {{ f.assessment.tone }}" title="{{ f.assessment.summary }}">{{ f.assessment.label }}</span>{% else %}<span class="muted">–</span>{% endif %}</td>
+      <td class="small" style="min-width:180px;max-width:280px"><div class="clamp2">{% if f.top_reason %}{{ f.top_reason.title }} <span class="muted">= {{ f.top_reason.value }}</span>{% else %}<span class="muted">–</span>{% endif %}</div></td>
+      {% if show_disp %}<td>{{ disp_pill(f.disposition) }}</td>{% endif %}
+      <td class="small nowrap" title="{{ f.last_seen }}">{{ ago(f.last_seen) }}</td>
+    </tr>
+  {% endfor %}
+  </tbody>
+</table>
+{% else %}{{ empty('search', 'No files match.') }}{% endif %}
+{%- endmacro %}

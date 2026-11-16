@@ -1,0 +1,28 @@
+{% extends "base.html" %}
+{% from "_ui.html" import icon, kpi, linechart %}
+{% from "_filelist.html" import filetable %}
+{% block title %}{{ s.sensor_id }}{% endblock %}
+{% block crumbs %}<div class="crumbs"><a href="{{ url_for('sensors') }}">EDR sensors</a> / {{ s.sensor_id }}</div>{% endblock %}
+{% block heading %}{{ s.sensor_id }} <span class="pill {{ 'good' if s.online else 'neutral' }}" style="vertical-align:middle;font-size:12px">{{ 'Online' if s.online else 'Offline' }}</span>{% endblock %}
+{% block body %}
+{% set t = s.stats.totals or {} %}{% set g = s.stats.gauges or {} %}
+<div class="kpis">
+  {{ kpi('Processes observed', '{:,}'.format(t.processes_observed or 0), 'activity', 'accent', 'since install') }}
+  {{ kpi('Connections', '{:,}'.format(t.connections_observed or 0), 'globe', 'blue', (g.unique_remote_ips or 0) ~ ' unique remote IPs') }}
+  {{ kpi('Uploads', t.uploads_sent or 0, 'upload', 'slate', (t.upload_dedup or 0) ~ ' dedup hits · ' ~ (t.upload_fail or 0) ~ ' failed') }}
+  {{ kpi('Malicious verdicts', t.verdict_malicious or 0, 'alert', 'red', (g.alerts_open or 0) ~ ' open alerts') }}
+  {{ kpi('Upload → verdict', (g.verdict_latency_s_median ~ '<small> s</small>') if g.verdict_latency_s_median is not none else '–', 'clock', 'amber',
+         'p95 ' ~ (g.verdict_latency_s_p95 if g.verdict_latency_s_p95 is not none else '–') ~ ' s') }}
+  {{ kpi('Agent', ((g.uptime_s or 0) // 60) ~ '<small> min up</small>', 'sensor', 'green',
+         ('elevated' if g.elevated else 'not elevated (limited visibility)') ~ ' · v' ~ s.agent_version) }}
+</div>
+<div class="grid">
+  <section class="card c8"><div class="card-h"><h3>Cumulative counters</h3><span class="sub">from {{ n_hist }} heartbeats (7-day retention)</span></div>
+    <div class="card-b">{{ linechart(series) }}</div></section>
+  <section class="card c4"><div class="card-h"><h3>All statistics</h3><span class="sub">latest heartbeat {{ ago(s.last_heartbeat) }}</span></div>
+    <div class="card-b flush" style="max-height:310px;overflow:auto"><table class="table compact"><tbody>
+      {% for k, v in (t.items() | list) + (g.items() | list) %}<tr><td>{{ k.replace('_', ' ') }}</td><td class="mono" style="text-align:right">{{ v }}</td></tr>{% endfor %}
+    </tbody></table></div></section>
+  <section class="card c12"><div class="card-h"><h3>Files from this sensor</h3></div><div class="card-b flush">{{ filetable(files) }}</div></section>
+</div>
+{% endblock %}

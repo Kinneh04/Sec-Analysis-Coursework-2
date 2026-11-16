@@ -1,138 +1,266 @@
-{% extends "base_public.html" %}
-{% from "_macros.html" import gauge, pill %}
-{% block title %}{{ r.names[0] if r.names else r.sha256[:12] }} · SA2 Scan{% endblock %}
-{% block bodyclass %}{{ 'print' if print_mode else '' }}{% endblock %}
-{% block body %}
-{% set pe = r.pe or {} %}
-<section class="report" data-sha="{{ r.sha256 }}" data-status="{{ r.status }}" {% if print_mode %}data-print="1"{% endif %}>
-  <div class="rep-head">
-    <div class="rep-gauge">
-      {% if r.status in ('queued', 'scanning') %}
-        <div class="spinner" aria-label="Scanning"></div><p class="muted">{{ r.status }}…</p>
-      {% else %}
-        {{ gauge(r.flag_count or 0, r.engine_count or 2, r.verdict) }}
-        <p class="gauge-caption">{% if r.verdict == 'malicious' %}<b class="red">{{ r.flag_count }}/{{ r.engine_count }} models flag this file</b>
-          {% elif r.verdict == 'benign' %}<b class="green">No model flags this file</b>
-          {% else %}<b class="amber">Analysis error</b>{% endif %}</p>
-      {% endif %}
-    </div>
-    <div class="rep-meta">
-      <div class="rep-verdict">{{ pill(r.verdict if r.status not in ('queued','scanning') else r.status) }}
-        {% if r.probability is not none %}<span class="muted">pe_v3 score <b>{{ '%.4f' % r.probability }}</b> · threshold {{ '%.4f' % thr }}</span>{% endif %}</div>
-      <h1 class="mono">{{ r.sha256 }}</h1>
-      <p class="names">{{ r.names | join(', ') }}</p>
-      <div class="chips">
-        <span>{{ '{:,}'.format(r.size) }} bytes</span>
-        {% if pe.format %}<span>{{ pe.format }} {{ 'DLL' if pe.is_dll else 'EXE' }}</span>{% endif %}
-        {% if pe.machine %}<span>{{ pe.machine.replace('IMAGE_FILE_MACHINE_', '') }}</span>{% endif %}
-        {% if pe.signature %}<span class="{{ 'green' if pe.signature == 'Valid' else 'amber' }}">signature: {{ pe.signature }}</span>{% endif %}
-        <span>first seen {{ r.first_seen }}</span><span>last seen {{ r.last_seen }}</span>
-        <span>{{ r.submissions | length }} submission(s)</span>
+{% extends "base.html" %}
+{% from "_ui.html" import icon, meter, verdict_pill, disp_pill, ring, empty %}
+{% block title %}{{ r.names[0] if r.names else r.sha256[:12] }}{% endblock %}
+{% block page %}
+{% set pe = r.pe or {} %}{% set sig = pe.signature if pe.signature is mapping else {} %}{% set vi = pe.version_info or {} %}
+{% set exp = r.explanation or {} %}{% set a = r.assessment %}
+{% set outcome = 'pending' if r.status in ('queued', 'scanning') else ('error' if r.status == 'error' else ('malicious' if r.verdict == 'malicious' else ('borderline' if r.risk == 'elevated' else 'benign'))) %}
+{% set sig_ids = (r.all_signals or []) | map(attribute='id') | list %}
+<div class="stack" data-sha="{{ r.sha256 }}" data-status="{{ r.status }}" {% if print_mode %}data-print="1"{% endif %} id="report">
+
+  <section class="card">
+    <div class="vt-head">
+      <div>
+        {{ ring(r.flag_count or 0, r.engine_count or 2, outcome) }}
+        <div class="ring-cap">engines flagged</div>
+        <div class="ring-score {{ 'red' if outcome == 'malicious' else ('amber' if outcome == 'borderline' else 'green') }}" title="pe_v3 score (threshold {{ '%.4f' % thr }})">
+          {{ '%.4f' % r.probability if r.probability is not none else '–' }}</div>
+      </div>
+      <div style="min-width:0">
+        <div class="vt-verdict {{ outcome }}">
+          {% if outcome == 'pending' %}{{ icon('clock') }} Analysis in progress…
+          {% elif outcome == 'error' %}{{ icon('alert') }} The file could not be scored
+          {% elif outcome == 'malicious' %}{{ icon('alert') }} {{ r.flag_count }} / {{ r.engine_count }} engines flagged this file as malicious
+          {% elif outcome == 'borderline' %}{{ icon('eye') }} No engine flagged this file, but the score is borderline
+          {% else %}{{ icon('check') }} No engine flagged this file{% endif %}
+          <span style="margin-left:6px">{{ disp_pill(r.disposition) }}</span>
+        </div>
+        <div class="vt-sha">{{ r.sha256 }}<button class="btn sm ghost noprint" data-copy="{{ r.sha256 }}" title="Copy SHA-256">{{ icon('copy', 'sm') }}</button></div>
+        <div class="vt-name">{{ r.names | join(', ') }}</div>
+        <div class="chips">
+          <span class="tag">{{ 'pedll' if pe.is_dll else 'peexe' }}</span>
+          {% if pe.format %}<span class="tag">{{ '64bits' if pe.format == 'PE32+' else '32bits' }}</span>{% endif %}
+          {% if sig.status == 'Valid' %}<span class="tag positive">{{ icon('shield', 'sm') }}signed · {{ sig.signer }}</span>
+          {% elif sig.status == 'NotSigned' %}<span class="tag">unsigned</span>{% elif sig.status %}<span class="tag high">signature {{ sig.status }}</span>{% endif %}
+          {% for s in r.all_signals or [] if s.id.startswith('format_') %}<span class="tag low">{{ s.id[7:] }}</span>{% endfor %}
+          {% if pe.overlay_size %}<span class="tag">overlay</span>{% endif %}
+          {% if 'rwx' in sig_ids %}<span class="tag medium">rwx-section</span>{% endif %}
+          {% if 'api_injection' in sig_ids %}<span class="tag high">injection-apis</span>{% endif %}
+          {% if pe.tls %}<span class="tag">tls-callbacks</span>{% endif %}
+          {% if vi.CompanyName %}<span class="tag">{{ vi.CompanyName }}</span>{% endif %}
+        </div>
+      </div>
+      <div class="vt-facts">
+        <div><div class="k">Size</div><div class="v">{{ r.size | filesize }}</div></div>
+        <div><div class="k">Last analysis</div><div class="v">{{ (r.last_seen or '')[:16].replace('T', ' ') }} UTC</div></div>
+        <div class="filetype">{{ 'DLL' if pe.is_dll else 'EXE' }}</div>
+        <div><div class="k">First seen</div><div class="v">{{ ago(r.first_seen) }}</div></div>
+        <div><div class="k">Submissions</div><div class="v">{{ r.submissions | length }}</div></div>
       </div>
     </div>
-    {% if not print_mode %}
-    <div class="rep-actions">
-      <a class="btn-outline" href="{{ url_for('report_json', sha=r.sha256) }}">Export JSON</a>
-      <a class="btn-outline" href="{{ url_for('report_csv', sha=r.sha256) }}">Export CSV</a>
-      <a class="btn-outline" href="{{ url_for('report_print', sha=r.sha256) }}" target="_blank">Print / PDF</a>
-      {% if is_admin %}<form method="post" action="{{ url_for('admin_reanalyse', sha=r.sha256) }}"><button class="btn-outline">Reanalyse</button></form>{% endif %}
+    <div class="actionbar noprint">
+      <form class="disp" method="post" action="{{ url_for('set_disposition', sha=r.sha256) }}">
+        <span class="muted small">Analyst decision</span>
+        <select name="disposition">{% for k, v in DISPOSITIONS.items() %}<option value="{{ k }}" {{ 'selected' if (r.disposition or '') == k }}>{{ v }}</option>{% endfor %}</select>
+        <input type="text" name="note" placeholder="Note (optional)" value="{{ r.disposition_note or '' }}" style="width:220px">
+        <button class="btn sm">Save</button>
+        {% if r.disposition_at %}<span class="muted small">set {{ ago(r.disposition_at) }}</span>{% endif %}
+      </form>
+      <div class="row right">
+        <a class="btn sm quiet" href="{{ url_for('report_json', sha=r.sha256) }}">{{ icon('download', 'sm') }}JSON</a>
+        <a class="btn sm quiet" href="{{ url_for('report_csv', sha=r.sha256) }}">{{ icon('download', 'sm') }}CSV</a>
+        <a class="btn sm quiet" href="{{ url_for('report_print', sha=r.sha256) }}" target="_blank">{{ icon('print', 'sm') }}Print / PDF</a>
+        <form method="post" action="{{ url_for('reanalyse', sha=r.sha256) }}"><button class="btn sm quiet">{{ icon('refresh', 'sm') }}Reanalyze</button></form>
+      </div>
     </div>
-    {% endif %}
-  </div>
+  </section>
 
-  {% if r.status not in ('queued', 'scanning') %}
-  <div class="tabs left" role="tablist">
-    {% for id, label in [('detection','DETECTION'),('details','DETAILS'),('why','WHY'),('source','SOURCE'),('raw','RAW')] %}
-      <button class="tab {{ 'active' if loop.first }}" data-tab="t-{{ id }}" role="tab">{{ label }}</button>
-    {% endfor %}
-  </div>
+  {% if outcome == 'pending' %}
+  <section class="card"><div class="empty">{{ icon('clock') }}<div>This page refreshes automatically when the scan finishes (usually 1–2 s).</div></div></section>
+  {% else %}
 
-  <div id="t-detection" class="tabpane active">
-    <h2 class="print-only">Detection</h2>
-    {% if r.error %}<p class="amber">Error: {{ r.error }}</p>{% endif %}
-    <table class="tbl">
-      <thead><tr><th>Engine</th><th>Model</th><th style="width:40%">Probability</th><th>Threshold</th><th>Verdict</th></tr></thead>
-      <tbody>
-      {% for e in r.engines %}
-        <tr>
-          <td><b>{{ e.name }}</b>{% if e.recommended %} <span class="tag">decides verdict</span>{% else %} <span class="tag muted">baseline</span>{% endif %}</td>
-          <td>{{ e.model_tag }}</td>
-          <td><div class="probbar"><span class="{{ 'red' if e.flagged else 'green' }}" style="width: {{ e.probability * 100 }}%"></span>
-              <i style="left: {{ e.threshold * 100 }}%" title="threshold"></i></div>
-              <small class="mono">{{ '%.6f' % e.probability }}</small></td>
-          <td class="mono">{{ '%.4f' % e.threshold }}<br><small class="muted">{{ e.threshold_source.replace('_', ' ') }}{% if e.threshold_source != 'frozen' %} (frozen {{ '%.4f' % e.frozen_threshold }}){% endif %}</small></td>
-          <td>{{ pill('malicious' if e.flagged else 'benign') }}</td>
-        </tr>
-      {% endfor %}
-      </tbody>
-    </table>
-    <p class="note">Models: SA2 V3.2 frozen LightGBM bundle (<code>artifacts/v3.2/models</code>). <b>pe_v3</b> passed the preregistered blind
-      evaluation (TPR 0.738 vs 0.597 at 0.63% FPR, 567 files; <code>docs/v3.2_results.md</code>). Static PE features only: packed, obfuscated
-      or non-PE payloads may be missed. The verdict uses the deploy-calibrated threshold (0.9603, 246 temporal benign files).</p>
-  </div>
-
-  <div id="t-details" class="tabpane">
-    <h2 class="print-only">Details</h2>
-    {% if pe.error %}<p class="amber">{{ pe.error }}</p>{% endif %}
-    <div class="grid2">
-      <div class="card"><h3>Hashes</h3>
-        <dl class="kv"><dt>SHA-256</dt><dd class="mono">{{ r.sha256 }}</dd><dt>SHA-1</dt><dd class="mono">{{ r.sha1 }}</dd>
-          <dt>MD5</dt><dd class="mono">{{ r.md5 }}</dd><dt>Imphash</dt><dd class="mono">{{ pe.imphash or '–' }}</dd></dl></div>
-      <div class="card"><h3>PE header</h3>
-        <dl class="kv"><dt>Machine</dt><dd>{{ pe.machine }}</dd><dt>Subsystem</dt><dd>{{ pe.subsystem }}</dd>
-          <dt>Compile time</dt><dd>{{ pe.timestamp }}</dd><dt>Entry point</dt><dd class="mono">{{ pe.entry_point }}</dd>
-          <dt>Image base</dt><dd class="mono">{{ pe.image_base }}</dd><dt>Resources</dt><dd>{{ pe.resource_types }} type(s)</dd>
-          <dt>Overlay</dt><dd>{{ '{:,}'.format(pe.overlay_size or 0) }} bytes</dd><dt>Signature</dt><dd>{{ pe.signature }}</dd></dl></div>
-    </div>
-    <div class="card"><h3>Sections ({{ (pe.sections or []) | length }})</h3>
-      <table class="tbl"><thead><tr><th>Name</th><th>Virtual address</th><th>Virtual size</th><th>Raw size</th><th style="width:30%">Entropy</th><th>Flags</th></tr></thead><tbody>
-      {% for s in pe.sections or [] %}
-        <tr class="{{ 'row-warn' if s.rwx }}"><td class="mono">{{ s.name }}</td><td class="mono">{{ s.virtual_address }}</td><td>{{ '{:,}'.format(s.virtual_size) }}</td><td>{{ '{:,}'.format(s.raw_size) }}</td>
-          <td><div class="probbar"><span class="{{ 'red' if s.entropy > 7.2 else 'blue' }}" style="width: {{ s.entropy / 8 * 100 }}%"></span></div><small>{{ s.entropy }}</small></td>
-          <td class="mono">{{ s.flags }}{% if s.rwx %} <span class="tag red">RWX</span>{% endif %}</td></tr>
-      {% endfor %}</tbody></table></div>
-    <div class="card"><h3>Imports ({{ (pe.imports or {}) | length }} DLLs, {{ (pe.imports or {}).values() | map('length') | sum }} functions)</h3>
-      {% for dll, fns in (pe.imports or {}).items() %}
-        <details {{ 'open' if print_mode }}><summary class="mono">{{ dll }} <span class="muted">({{ fns | length }})</span></summary>
-          <div class="fnlist mono">{{ fns | join(' · ') }}</div></details>
-      {% else %}<p class="muted">No imports.</p>{% endfor %}</div>
-    <div class="card"><h3>Exports ({{ (pe.exports or []) | length }})</h3>
-      {% if pe.exports %}<div class="fnlist mono">{{ pe.exports | join(' · ') }}</div>{% else %}<p class="muted">No exports.</p>{% endif %}</div>
-  </div>
-
-  <div id="t-why" class="tabpane">
-    <h2 class="print-only">Why (feature contributions)</h2>
-    <p class="muted">Top {{ (r.top_features or []) | length }} SHAP contributions to the <b>pe_v3</b> score (LightGBM <code>pred_contrib</code>, log-odds).
-      <span class="red">Red</span> pushes towards malicious, <span class="blue">blue</span> towards benign. These describe the model, not proven behaviour.</p>
-    {% set mx = (r.top_features or []) | map(attribute='contribution') | map('abs') | max if r.top_features else 1 %}
-    <div class="diverge">
-    {% for f in r.top_features or [] %}
-      <div class="dv-row"><div class="dv-label mono">{{ f.feature }}</div>
-        <div class="dv-axis"><span class="{{ 'red' if f.contribution > 0 else 'blue' }}"
-          style="{{ 'left:50%' if f.contribution > 0 else 'right:50%' }}; width: {{ 50 * (f.contribution | abs) / mx }}%"></span></div>
-        <div class="dv-val mono">{{ '%+.3f' % f.contribution }}</div></div>
-    {% endfor %}
-    </div>
-  </div>
-
-  <div id="t-source" class="tabpane">
-    <h2 class="print-only">Source</h2>
-    <table class="tbl"><thead><tr><th>Time (UTC)</th><th>Source</th><th>Sensor</th><th>File name</th><th>Context</th></tr></thead><tbody>
-    {% for s in r.submissions %}
-      <tr><td>{{ s.at }}</td><td>{{ s.source }}</td><td>{{ s.sensor_id or '–' }}</td><td>{{ s.filename }}</td>
-        <td class="small">{% set m = s.meta %}
-          {% if m.process %}process <b>{{ m.process }}</b> (pid {{ m.pid }}{% if m.parent %}, parent {{ m.parent }}{% endif %})<br>{% endif %}
-          {% if m.exe_path %}path <code>{{ m.exe_path }}</code><br>{% endif %}
-          {% if m.remote %}remote {{ m.remote | join(', ') }}<br>{% endif %}
-          {% if m.motw and m.motw.zone is not none %}MOTW zone {{ m.motw.zone }}{% if m.motw.host_url %} · <code>{{ m.motw.host_url }}</code>{% endif %}<br>{% endif %}
-          {% if m.rules %}rules {% for x in m.rules %}<span class="tag">{{ x }}</span>{% endfor %}{% endif %}
-          {% if not m %}<span class="muted">web upload</span>{% endif %}</td></tr>
-    {% endfor %}</tbody></table>
-  </div>
-
-  <div id="t-raw" class="tabpane {{ 'noprint' }}">
-    <pre class="raw">{{ r | tojson(indent=2) }}</pre>
+  {% if a %}
+  <div class="vt-banner {{ a.tone }}">
+    <span class="ic">{{ icon({'good': 'check', 'warn': 'eye', 'bad': 'alert'}.get(a.tone, 'info'), 'lg') }}</span>
+    <div><h3>{{ a.label }}</h3>
+      {% set lead = (a.paragraphs or [a.summary]) | last %}{% if lead.startswith('Correlation: ') %}{% set lead = lead[13:14] | upper ~ lead[14:] %}{% endif %}
+      <p>{{ lead }}</p>
+      <div class="note">{{ a.note }} Full reasoning is in the DETECTION and REASONING tabs.</div></div>
   </div>
   {% endif %}
-</section>
+
+  <div class="tabs noprint" role="tablist">
+    <button class="on" data-tab="t-detection">Detection</button>
+    <button data-tab="t-reasoning">Reasoning</button>
+    <button data-tab="t-signals">Signals<span class="n">{{ (r.all_signals or []) | length }}</span></button>
+    <button data-tab="t-details">Details</button>
+    <button data-tab="t-origin">Origin<span class="n">{{ r.submissions | length }}</span></button>
+    <button data-tab="t-raw">Raw</button>
+  </div>
+
+  {# ---------------- DETECTION ---------------- #}
+  <div id="t-detection" class="tabpane on">
+    <div class="stack">
+      {% if a %}
+      <div>
+        <div class="section-t">Analyst assessment <span class="sub">how the model's reasons line up with what else is known about the file</span></div>
+        <div class="corr">{% for line in a.paragraphs or [a.summary] %}
+          {% if line.startswith('Correlation: ') %}<p><b>Correlation.</b> {{ line[13:14] | upper }}{{ line[14:] }}</p>{% else %}<p>{{ line }}</p>{% endif %}{% endfor %}</div>
+      </div>
+      <div class="proscons">
+        <div class="card"><div class="card-h"><h3 class="red">Raises concern</h3></div><div class="card-b"><ul>
+          {% for x in a.points_for %}<li>{{ icon('up', 'sm red') }}<span>{{ x }}</span></li>{% else %}<li class="muted">{{ icon('minus', 'sm') }}No independent indicator beyond the model score.</li>{% endfor %}</ul></div></div>
+        <div class="card"><div class="card-h"><h3 class="green">Lowers concern</h3></div><div class="card-b"><ul>
+          {% for x in a.points_against %}<li>{{ icon('down', 'sm green') }}<span>{{ x }}</span></li>{% else %}<li class="muted">{{ icon('minus', 'sm') }}Nothing that offsets the score.</li>{% endfor %}</ul></div></div>
+      </div>
+      {% endif %}
+
+      <div>
+        <div class="section-t">Engines <span class="sub">frozen V3.2 LightGBM bundle · verdict decided by pe_v3</span></div>
+        <div class="engines">
+          {% for e in r.engines or [] %}
+          <div class="eng">
+            <div class="name">{{ e.name }}<small>{{ 'decides the verdict · 2,105 features' if e.recommended else 'baseline · 274 features' }}</small></div>
+            <div class="res {{ 'flag' if e.flagged else 'ok' }}">{{ icon('alert' if e.flagged else 'check', 'sm') }}{{ 'Malicious' if e.flagged else 'Undetected' }}</div>
+            {{ meter(e.probability, 'high' if e.flagged else ('elevated' if e.probability >= 0.5 else 'low')) }}
+            <div class="muted small" style="grid-column:1/-1">threshold {{ '%.4f' % e.threshold }} ({{ e.threshold_source.replace('_', ' ') }}{% if e.threshold_source != 'frozen' %}; frozen {{ '%.4f' % e.frozen_threshold }}{% endif %})</div>
+          </div>
+          {% else %}<div class="eng">{{ r.error or 'Not scored.' }}</div>{% endfor %}
+        </div>
+      </div>
+
+      {% set keyobs = (r.all_signals or []) | rejectattr('severity', 'equalto', 'info') | list %}
+      {% if keyobs %}
+      <div>
+        <div class="section-t">Key observations <span class="sub">see SIGNALS for what each one means</span></div>
+        <div class="card"><div class="card-b flush"><table class="table compact"><tbody>
+          {% for s in keyobs[:6] %}<tr><td style="width:110px"><span class="tag {{ s.severity }}">{{ s.severity }}</span></td><td><b>{{ s.title }}</b>
+            <div class="muted small mono">{{ s.evidence | truncate(110) }}</div></td></tr>{% endfor %}
+        </tbody></table></div></div>
+      </div>
+      {% endif %}
+    </div>
+  </div>
+
+  {# ---------------- REASONING ---------------- #}
+  <div id="t-reasoning" class="tabpane">
+    <div class="stack">
+      <div class="card">
+        <div class="card-h"><h3>Score breakdown</h3><span class="sub">how each factor group moved the pe_v3 score (SHAP, log-odds)</span></div>
+        <div class="card-b">
+          {% if exp.groups %}
+          {% set mx = exp.groups | map(attribute='contribution') | map('abs') | max %}
+          <div class="waterfall">
+            <div class="wf"><div class="name">Average file<small>starting point before looking at this file</small></div><div></div>
+              <div class="v">{{ '%.3f' % exp.base_probability }}</div></div>
+            {% for g in exp.groups if (g.contribution | abs) >= 0.005 %}{% set w = 50 * (g.contribution | abs) / mx %}
+            <div class="wf" title="{{ GROUPS[g.group][1] }}">
+              <div class="name">{{ g.label }}<small>{{ GROUPS[g.group][1] | truncate(64) }}</small></div>
+              <div class="axis0"><span class="{{ 'pos' if g.contribution > 0 else 'neg' }}" style="{{ 'left:50%' if g.contribution > 0 else 'right:50%' }};width:{{ w }}%"></span></div>
+              <div class="v {{ 'red' if g.contribution > 0 else 'green' }}">{{ '%+.2f' % g.contribution }}</div>
+            </div>
+            {% endfor %}
+            <div class="wf total"><div class="name">This file<small>final pe_v3 score vs threshold {{ '%.4f' % thr }}</small></div>
+              <div class="meter" style="min-width:0">{{ meter(exp.final_probability, r.risk) }}</div>
+              <div class="v {{ 'red' if r.verdict == 'malicious' else 'green' }}">{{ '%.4f' % exp.final_probability }}</div></div>
+          </div>
+          {% else %}{{ empty('info', 'No model explanation for this file.') }}{% endif %}
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-h"><h3>Top reasons</h3><span class="sub">the model's strongest drivers, compared with typical training files</span>
+          <div class="actions"><a class="btn sm quiet" href="{{ url_for('glossary') }}#reasons">How to read this</a></div></div>
+        <div class="card-b flush reasons">
+          {% set mx = (exp.top or [{'contribution': 1}]) | map(attribute='contribution') | map('abs') | max %}
+          {% for x in exp.top or [] %}{% set w = 50 * (x.contribution | abs) / mx %}
+          <div class="reason {{ 'up' if x.contribution > 0 else 'down' }}">
+            <span class="n">{{ loop.index }}</span>
+            <div>
+              <div class="t">{{ x.title }}</div>
+              <div class="d">This file: <b>{{ x.value }}</b>{% if x.typical %} · {{ x.typical }}{% endif %}.
+                {{ 'Pushes towards malicious' if x.contribution > 0 else 'Pulls towards benign' }} ({{ x.strength }}) · {{ GROUPS[x.group][0] }}.</div>
+              <div class="feat">{{ x.feature }}</div>
+            </div>
+            <div class="effect"><div class="track"><span class="{{ 'bg-red' if x.contribution > 0 else 'bg-green' }}"
+              style="{{ 'left:50%' if x.contribution > 0 else 'right:50%' }};width:{{ w }}%"></span></div>
+              <small class="mono {{ 'red' if x.contribution > 0 else 'green' }}">{{ '%+.3f' % x.contribution }} log-odds</small></div>
+          </div>
+          {% else %}{{ empty('info', 'No feature contributions recorded.') }}{% endfor %}
+        </div>
+      </div>
+    </div>
+  </div>
+
+  {# ---------------- SIGNALS ---------------- #}
+  <div id="t-signals" class="tabpane">
+    <div class="section-t">Context signals <span class="sub">facts about the file the model does not weigh directly · <a href="{{ url_for('glossary') }}">all signals explained</a></span></div>
+    <div class="signals">
+    {% for s in r.all_signals %}
+      <div class="signal {{ s.severity }}">
+        <div class="st">{{ s.title }}<span class="sev tag {{ s.severity }}">{{ s.severity }}</span></div>
+        <div class="ev">{{ s.evidence }}</div>
+        <div class="mean"><b>What this means:</b> {{ s.meaning }}</div>
+        {% if s.model_bias %}<div class="bias">{{ icon('alert', 'sm') }} Known model bias: treat this format's score with caution.</div>{% endif %}
+      </div>
+    {% else %}{{ empty('info', 'No context signals.') }}{% endfor %}
+    </div>
+  </div>
+
+  {# ---------------- DETAILS ---------------- #}
+  <div id="t-details" class="tabpane">
+    <div class="grid">
+      <section class="card c6"><div class="card-h"><h3>Basic properties</h3></div><div class="card-b">
+        <dl class="kv"><dt>SHA-256</dt><dd class="mono">{{ r.sha256 }}</dd><dt>SHA-1</dt><dd class="mono">{{ r.sha1 }}</dd>
+          <dt>MD5</dt><dd class="mono">{{ r.md5 }}</dd><dt>Imphash</dt><dd class="mono">{{ pe.imphash or '–' }}</dd>
+          <dt>File type</dt><dd>{{ pe.format }} {{ 'DLL' if pe.is_dll else 'executable' }} · {{ (pe.machine or '').replace('IMAGE_FILE_MACHINE_', '') }}</dd>
+          <dt>Size</dt><dd>{{ r.size | filesize }} ({{ '{:,}'.format(r.size) }} bytes)</dd></dl></div></section>
+      <section class="card c6"><div class="card-h"><h3>Signature &amp; version info</h3></div><div class="card-b">
+        <dl class="kv"><dt>Signature</dt><dd>{% if sig.status == 'Valid' %}<span class="green">Valid</span>{% else %}{{ sig.status }}{% endif %}{% if sig.timestamped %} · timestamped{% endif %}</dd>
+          <dt>Signer</dt><dd>{{ sig.signer or '–' }}</dd><dt>Issuer</dt><dd>{{ sig.issuer or '–' }}</dd>
+          {% for k, v in vi.items() %}<dt>{{ k }}</dt><dd>{{ v }}</dd>{% endfor %}</dl></div></section>
+      <section class="card c6"><div class="card-h"><h3>Portable Executable info</h3></div><div class="card-b">
+        <dl class="kv"><dt>Compilation time</dt><dd>{{ (pe.timestamp or '')[:19].replace('T', ' ') }} <span class="muted">(header field)</span></dd>
+          <dt>Subsystem</dt><dd>{{ pe.subsystem }}</dd><dt>Entry point</dt><dd class="mono">{{ pe.entry_point }}</dd>
+          <dt>Image base</dt><dd class="mono">{{ pe.image_base }}</dd><dt>Linker</dt><dd>{{ pe.linker }}</dd>
+          <dt>Mitigations</dt><dd>ASLR {{ '✓' if pe.aslr else '✗' }} · DEP {{ '✓' if pe.dep else '✗' }} · CFG {{ '✓' if pe.cfg else '✗' }}</dd>
+          <dt>Overlay</dt><dd>{{ (pe.overlay_size or 0) | filesize }}{% if pe.overlay_size %} · entropy {{ pe.overlay_entropy }}{% endif %}</dd>
+          <dt>Directories</dt><dd>{% for k, label in [('dotnet', '.NET'), ('tls', 'TLS'), ('has_debug', 'debug'), ('has_relocs', 'relocations'), ('embedded_signature', 'signature')] %}<span class="tag" style="{{ '' if pe[k] else 'opacity:.4' }}">{{ label }}</span> {% endfor %}</dd></dl></div></section>
+      <section class="card c6"><div class="card-h"><h3>Resources, URLs, exports</h3></div><div class="card-b">
+        <div class="chips" style="margin-bottom:12px">{% for x in pe.resources or [] %}<span class="tag">{{ x.type }} × {{ x.count }}</span>{% else %}<span class="muted">No resources.</span>{% endfor %}</div>
+        <div class="section-t">URLs ({{ (pe.urls or []) | length }})</div>
+        {% for u in pe.urls or [] %}<div class="mono small break">{{ u }}</div>{% else %}<span class="muted small">None found (certificate URLs are ignored).</span>{% endfor %}
+        <div class="section-t" style="margin-top:12px">Exports ({{ (pe.exports or []) | length }})</div>
+        <div class="mono small break">{{ (pe.exports or [])[:40] | join(', ') or '–' }}</div></div></section>
+      <section class="card c12"><div class="card-h"><h3>Sections</h3><span class="sub">▶ marks where execution starts</span></div>
+        <div class="card-b flush sections"><table class="table compact">
+          <thead><tr><th>Name</th><th>Virtual address</th><th>Virtual size</th><th>Raw size</th><th>Entropy</th><th>Permissions</th></tr></thead><tbody>
+          {% for s in pe.sections or [] %}
+            <tr><td class="mono">{{ '▶ ' if s.has_entry_point }}{{ s.name or '(none)' }}</td><td class="mono">{{ s.virtual_address }}</td>
+              <td class="tnum">{{ s.virtual_size | filesize }}</td><td class="tnum">{{ s.raw_size | filesize }}</td>
+              <td><div class="ent"><div class="track"><span class="{{ 'bg-red' if s.entropy > 7.2 else ('bg-amber' if s.entropy > 6.5 else 'bg-accent') }}" style="width:{{ s.entropy / 8 * 100 }}%"></span></div>
+                <span class="mono small">{{ '%.2f' % s.entropy }}</span></div></td>
+              <td class="mono">{{ s.flags }}{% if s.rwx %} <span class="tag high">RWX</span>{% endif %}</td></tr>
+          {% endfor %}</tbody></table></div></section>
+      <section class="card c12"><div class="card-h"><h3>Imports</h3><span class="sub">{{ (pe.imports or {}) | length }} DLLs · highlighted functions belong to a capability group</span></div>
+        <div class="card-b">
+          {% for dll, fns in (pe.imports or {}).items() %}
+            {% set hits = fns | map('lower') | select('in', NOTABLE) | list %}
+            <details class="imp" {{ 'open' if print_mode }}><summary>{{ icon('package', 'sm') }}<span class="mono">{{ dll }}</span>
+              <span class="muted small">{{ fns | length }} functions</span>{% if hits %}<span class="tag medium">{{ hits | length }} notable</span>{% endif %}</summary>
+              <div class="fns">{% for fn in fns %}<code class="{{ 'hl' if fn.lower() in NOTABLE }}">{{ fn }}</code>{% endfor %}</div></details>
+          {% else %}<p class="muted" style="margin:0">No imports.</p>{% endfor %}</div></section>
+    </div>
+  </div>
+
+  {# ---------------- ORIGIN ---------------- #}
+  <div id="t-origin" class="tabpane">
+    <section class="card"><div class="card-h"><h3>Submission history</h3></div><div class="card-b timeline">
+      {% for s in r.submissions | reverse %}{% set m = s.meta %}
+      <div class="tl"><span class="dot">{{ icon('sensor' if s.source == 'edr' else 'upload', 'sm') }}</span>
+        <div><b>{{ 'EDR sensor ' ~ s.sensor_id if s.source == 'edr' else ('Web upload' if s.source == 'web' else 'API') }}</b>
+          <span class="muted small"> · {{ s.at.replace('T', ' ')[:19] }} UTC · as <span class="mono">{{ s.filename }}</span></span>
+          {% if m.exe_path %}<div class="small">Path <span class="mono">{{ m.exe_path }}</span></div>{% endif %}
+          {% if m.process %}<div class="small">Process <b>{{ m.process }}</b> (pid {{ m.pid }}{% if m.parent %}, parent {{ m.parent }}{% endif %}{% if m.user %}, user {{ m.user }}{% endif %})</div>{% endif %}
+          {% if m.remote %}<div class="small">Connections {{ m.remote | join(', ') }}</div>{% endif %}
+          {% if m.motw and m.motw.zone is not none %}<div class="small">Mark-of-the-Web zone {{ m.motw.zone }}{% if m.motw.host_url %} · <span class="mono break">{{ m.motw.host_url }}</span>{% endif %}</div>{% endif %}
+          {% if m.rules %}<div class="chips" style="margin-top:4px">{% for x in m.rules %}<span class="tag">{{ x }}</span>{% endfor %}{% if m.allowlisted %}<span class="tag">allowlisted</span>{% endif %}</div>{% endif %}
+        </div></div>
+      {% endfor %}
+    </div></section>
+  </div>
+
+  <div id="t-raw" class="tabpane"><pre class="raw">{{ r | tojson(indent=2) }}</pre></div>
+  {% endif %}
+</div>
 {% endblock %}

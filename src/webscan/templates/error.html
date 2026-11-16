@@ -1,0 +1,8 @@
+{% extends "base.html" %}
+{% from "_ui.html" import icon %}
+{% block title %}{{ code }}{% endblock %}
+{% block heading %}{{ code }}{% endblock %}
+{% block body %}
+<section class="card"><div class="empty">{{ icon('search') }}<div style="font-size:15px;margin-bottom:12px">{{ msg }}</div>
+  <a class="btn" href="{{ url_for('home') }}">Back to start</a></div></section>
+{% endblock %}

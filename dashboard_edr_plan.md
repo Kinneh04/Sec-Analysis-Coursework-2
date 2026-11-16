@@ -390,3 +390,19 @@ Screenshots: `docs/screenshots/` (`scan_home`, `scan_report_edr`, `scan_report_w
 - Counters are "since install": restarting the agent re-observes already-running processes.
 - In **Rules** mode, the unsigned `python.exe` copies in `.venv` score 2 (unsigned + user_writable) and would be uploaded. Add their paths to the watch exclusions or keep allowlist mode for demos.
 - Flask's development server is used. That is fine on localhost; do not expose the dashboard with `--host 0.0.0.0` outside a trusted lab network.
+
+---
+
+## 10. Console redesign and reasoning (2026-11-16)
+
+Prompted by a false positive: the signed `Uninstall ZCode.exe` was flagged 2/2. Investigation showed a training-data bias. NSIS-style files were 198 malware vs 4 benign in the V3.2 pool, and 10 of 16 benign NSIS executables on the test machine were flagged at 0.9603. The UI now explains every verdict so this kind of case is visible.
+
+| Part | What it does |
+|---|---|
+| `src/webscan/explain.py` | Turns all 2,105 SHAP contributions into plain-English reasons. Hashed buckets are resolved back to this file's import, section and export names. Each reason is compared with training medians. Contributions are grouped into 10 factor groups. Context signals (signer, NSIS/Inno/UPX/..., API capability groups, RWX/packed entry/overlay/TLS/mitigations/timestamp/URLs, EDR origin) each come with a "what this means" note. A heuristic assessment correlates the reasons with the signals |
+| `src/webscan/reference.py` | Builds `artifacts/v3.2/feature_reference.json` (96 KB of aggregate training-pool statistics, committed) |
+| Report (VT layout) | Detection ring, tag chips, assessment banner, tabs DETECTION · REASONING · SIGNALS · DETAILS · ORIGIN · RAW, analyst disposition |
+| Dashboard `/dashboard` | KPIs; detections over time; verdict mix; score history; engine agreement scatter + Pearson r; signal co-occurrence heatmap with flag rate vs base rate; factor-group heatmap of the highest scores; review queue; score distribution; activity; sensors |
+| Other pages | `/` VT-style home, `/submissions` with risk, assessment and main reason per row, `/insights` (signals by outcome, training biases, import matrix), `/glossary` (every signal and term explained), `/model`, `/sensors`, `/settings` |
+
+All UI pages require sign-in; the API keeps the `X-API-Key` header, so the EDR is unaffected. Reports carry a `report_version`, and older ones are re-scanned automatically at start-up. The model verdict is never changed by the reasoning layer. Tests: 75 passed.

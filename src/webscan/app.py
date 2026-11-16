@@ -1,4 +1,4 @@
-"""SA2 Scan: VT-style uploader + admin panel over the frozen V3.2 models (static analysis only).
+"""SA2 Scan: analyst console over the frozen V3.2 models (static analysis only).
 
   .venv\\Scripts\\python.exe -m src.webscan.app --port 8000
 """
@@ -10,6 +10,7 @@ import csv
 import hmac
 import io
 import json
+import math
 import os
 import queue
 import re
@@ -17,23 +18,27 @@ import secrets
 import stat
 import statistics
 import threading
-from collections import Counter
+from collections import Counter, defaultdict
 from datetime import datetime, timedelta, timezone
-from functools import wraps
+from functools import lru_cache, wraps
 from pathlib import Path
 from typing import Any
 
-from flask import (Flask, Response, abort, flash, jsonify, redirect, render_template, request, session, url_for)
+from flask import Flask, Response, abort, flash, jsonify, redirect, render_template, request, session, url_for
 
 from src.common.sqlite_db import DB
-from src.webscan import scanner
+from src.webscan import explain, scanner
 
 ROOT = Path(__file__).resolve().parents[2]
 MAX_BYTES = 50 * 1024 * 1024
 ONLINE_SECONDS = 90
+BORDERLINE = 0.5
+DISPOSITIONS = {"": "Unreviewed", "confirmed": "Confirmed malicious", "false_positive": "False positive",
+                "benign_ok": "Benign (verified)", "investigating": "Investigating"}
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS files(sha256 TEXT PRIMARY KEY, md5 TEXT, sha1 TEXT, imphash TEXT, size INTEGER, name TEXT,
-  first_seen TEXT, last_seen TEXT, status TEXT, verdict TEXT, probability REAL, scan_ms INTEGER, report_json TEXT);
+  first_seen TEXT, last_seen TEXT, status TEXT, verdict TEXT, probability REAL, scan_ms INTEGER, report_json TEXT,
+  disposition TEXT DEFAULT '', disposition_note TEXT, disposition_at TEXT);
 CREATE TABLE IF NOT EXISTS submissions(id INTEGER PRIMARY KEY, sha256 TEXT, at TEXT, source TEXT, sensor_id TEXT,
   filename TEXT, meta_json TEXT);
 CREATE INDEX IF NOT EXISTS ix_sub_sha ON submissions(sha256);
@@ -55,10 +60,33 @@ def age_seconds(ts: str | None) -> float:
     return (datetime.now(timezone.utc) - datetime.fromisoformat(ts)).total_seconds()
 
 
+def ago(ts: str | None) -> str:
+    s = age_seconds(ts)
+    if s == float("inf"):
+        return "never"
+    for unit, n in (("d", 86400), ("h", 3600), ("m", 60)):
+        if s >= n:
+            return f"{int(s // n)}{unit} ago"
+    return "just now"
+
+
 class BadUpload(Exception):
     def __init__(self, msg: str, code: int):
         super().__init__(msg)
         self.code = code
+
+
+@lru_cache(maxsize=1)
+def freeze_status() -> dict[str, Any]:
+    from src.v3 import freeze
+    bad = freeze.verify(tag=scanner.MODEL_TAG)
+    return {"bad": bad, "models_ok": not any("/models/" in b.replace("\\", "/") for b in bad)}
+
+
+def risk_band(p: float | None, thr: float) -> str:
+    if p is None:
+        return "none"
+    return "high" if p >= thr else ("elevated" if p >= BORDERLINE else "low")
 
 
 def create_app(data_dir: Path | None = None, *, start_worker: bool = True, scan_fn=None) -> Flask:
@@ -66,17 +94,23 @@ def create_app(data_dir: Path | None = None, *, start_worker: bool = True, scan_
     qdir = data_dir / "quarantine"
     qdir.mkdir(parents=True, exist_ok=True)
     db = DB(data_dir / "scan.db", SCHEMA)
+    cols = {r["name"] for r in db.q("PRAGMA table_info(files)")}
+    for c, ddl in (("disposition", "TEXT DEFAULT ''"), ("disposition_note", "TEXT"), ("disposition_at", "TEXT")):
+        if c not in cols:  # migrate databases created by the first version
+            db.x(f"ALTER TABLE files ADD COLUMN {c} {ddl}")
     scan_fn = scan_fn or scanner.scan
 
     app = Flask(__name__)
     app.config.update(MAX_CONTENT_LENGTH=MAX_BYTES + 1024 * 1024, SESSION_COOKIE_SAMESITE="Lax", DB=db)
-    if not db.setting("secret_key"):
-        db.set_setting("secret_key", secrets.token_hex(32))
-    if not db.setting("api_key"):
-        db.set_setting("api_key", secrets.token_urlsafe(24))
-    if not db.setting("admin_password"):
-        db.set_setting("admin_password", secrets.token_urlsafe(9))
+    for key, gen in (("secret_key", lambda: secrets.token_hex(32)), ("api_key", lambda: secrets.token_urlsafe(24)),
+                     ("admin_password", lambda: secrets.token_urlsafe(9))):
+        if not db.setting(key):
+            db.set_setting(key, gen())
     app.secret_key = db.setting("secret_key")
+    thr = scanner.thresholds()["pe_v3"]["threshold"]
+    notable = set().union(*(apis for _, _, apis, _ in explain.API_GROUPS.values()))
+    app.jinja_env.globals.update(thr=thr, ago=ago, DISPOSITIONS=DISPOSITIONS, GROUPS=explain.GROUPS, NOTABLE=notable,
+                                 pi=math.pi, cos=math.cos, sin=math.sin)
     jobs: queue.Queue[str] = queue.Queue()
 
     # ---------- core ----------
@@ -85,7 +119,8 @@ def create_app(data_dir: Path | None = None, *, start_worker: bool = True, scan_
         try:
             rep = scan_fn(qdir / sha)
         except Exception as e:  # keep the worker alive on any parser/model failure
-            rep = {"verdict": "error", "error": f"{type(e).__name__}: {e}", "engines": [], "top_features": [], "pe": {}}
+            rep = {"verdict": "error", "error": f"{type(e).__name__}: {e}", "engines": [], "top_features": [], "pe": {},
+                   "signals": [], "explanation": {}, "report_version": scanner.REPORT_VERSION}
         status = "error" if rep.get("verdict") == "error" else "done"
         db.x("UPDATE files SET status=?, verdict=?, probability=?, scan_ms=?, imphash=?, report_json=? WHERE sha256=?",
              (status, rep.get("verdict"), rep.get("probability"), rep.get("scan_ms"),
@@ -103,7 +138,7 @@ def create_app(data_dir: Path | None = None, *, start_worker: bool = True, scan_
         if len(raw) > MAX_BYTES:
             raise BadUpload("File larger than 50 MB", 413)
         if not scanner.is_pe(raw):
-            raise BadUpload("Not a PE file (no MZ header). SA2 models only analyse Windows PE files.", 415)
+            raise BadUpload("Not a Windows PE file (no MZ header). SA2 models only analyse .exe / .dll / .sys files.", 415)
         h = scanner.hashes(raw)
         sha, t = h["sha256"], now()
         path = qdir / sha
@@ -129,8 +164,28 @@ def create_app(data_dir: Path | None = None, *, start_worker: bool = True, scan_
         subs = db.q("SELECT at, source, sensor_id, filename, meta_json FROM submissions WHERE sha256=? ORDER BY id", (sha,))
         for s in subs:
             s["meta"] = json.loads(s.pop("meta_json") or "{}")
-        return {**f, **rep, "status": f["status"], "verdict": f["verdict"],
-                "names": sorted({s["filename"] for s in subs if s["filename"]}), "submissions": subs}
+        r = {**f, **rep, "status": f["status"], "verdict": f["verdict"],
+             "names": sorted({s["filename"] for s in subs if s["filename"]}), "submissions": subs}
+        sigs = (rep.get("signals") or []) + explain.origin_signals(subs)
+        r["all_signals"] = sigs
+        r["assessment"] = explain.assessment(r, sigs) if f["status"] == "done" else None
+        r["risk"] = risk_band(f["probability"], thr)
+        return r
+
+    def summarize(f: dict[str, Any]) -> dict[str, Any]:
+        """Lightweight per-row view for tables (parses the stored report once)."""
+        rep = json.loads(f.get("report_json") or "{}")
+        sigs = rep.get("signals") or []
+        top = next((r for r in (rep.get("explanation") or {}).get("top", [])
+                    if (r["contribution"] > 0) == (f.get("verdict") == "malicious")), None)
+        a = explain.assessment({**rep, "verdict": f.get("verdict"), "probability": f.get("probability")}, sigs) \
+            if f.get("status") == "done" else None
+        chips = [s for s in sigs if s["severity"] in ("high", "medium") or s["id"].startswith("format_") or s["id"] == "signed_valid"][:4]
+        signer = (rep.get("pe") or {}).get("signature", {})
+        return {**{k: v for k, v in f.items() if k != "report_json"}, "risk": risk_band(f.get("probability"), thr),
+                "top_reason": top, "assessment": a, "chips": chips,
+                "signer": signer.get("signer") if isinstance(signer, dict) and signer.get("status") == "Valid" else "",
+                "pe_format": (rep.get("pe") or {}).get("format"), "is_dll": (rep.get("pe") or {}).get("is_dll")}
 
     def find(q: str) -> list[dict[str, Any]]:
         q = q.strip()
@@ -151,89 +206,291 @@ def create_app(data_dir: Path | None = None, *, start_worker: bool = True, scan_
             return fn(*a, **kw)
         return inner
 
-    def require_admin(fn):
+    def login_required(fn):
         @wraps(fn)
         def inner(*a, **kw):
             if not session.get("admin"):
-                return redirect(url_for("admin_login", next=request.path))
+                return redirect(url_for("login", next=request.full_path.rstrip("?")))
             return fn(*a, **kw)
         return inner
 
-    # a Jinja global (not a context var) so imported macros such as badge() can read it
-    app.jinja_env.globals["thr"] = scanner.thresholds()["pe_v3"]["threshold"]
-
     @app.context_processor
     def ctx():
-        return {"is_admin": bool(session.get("admin"))}
+        fs = freeze_status()
+        return {"signed_in": bool(session.get("admin")), "models_ok": fs["models_ok"],
+                "pending_count": db.val("SELECT COUNT(*) FROM files WHERE status IN ('queued','scanning')") or 0}
 
     @app.template_filter("fromjson")
     def fromjson(s):
         return json.loads(s or "{}")
 
-    # ---------- public ----------
+    @app.template_filter("filesize")
+    def filesize(n):
+        return explain.fmt_value(float(n or 0), "bytes")
+
+    @app.route("/login", methods=["GET", "POST"])
+    def login():
+        if request.method == "POST":
+            if hmac.compare_digest(request.form.get("password", ""), os.environ.get("SA2_ADMIN_PASSWORD") or db.setting("admin_password")):
+                session["admin"] = True
+                nxt = request.args.get("next", "")
+                return redirect(nxt if nxt.startswith("/") and not nxt.startswith("//") else url_for("home"))
+            flash("Wrong password.", "error")
+        return render_template("login.html")
+
+    @app.get("/logout")
+    def logout():
+        session.clear()
+        return redirect(url_for("login"))
+
+    @app.get("/admin")
+    @app.get("/admin/<path:_rest>")
+    def legacy_admin(_rest: str = ""):
+        return redirect(url_for("overview"))
+
+    # ---------- overview ----------
+    def sensors_with_health() -> list[dict[str, Any]]:
+        rows = db.q("SELECT * FROM sensors ORDER BY last_heartbeat DESC")
+        for s in rows:
+            s["online"] = age_seconds(s["last_heartbeat"]) <= ONLINE_SECONDS
+            s["stats"] = json.loads(s.pop("stats_json") or "{}")
+        return rows
+
+
+    def correlations(done: list[dict[str, Any]]) -> dict[str, Any]:
+        """Cross-file views for the dashboard: engine agreement, score over time, signal co-occurrence, reason heatmap."""
+        thr_v1s = scanner.thresholds()["pe_v1s"]["threshold"]
+        rows = []
+        for f in done:
+            rep = json.loads(f["report_json"] or "{}")
+            eng = {e["name"]: e["probability"] for e in rep.get("engines", [])}
+            sig = (rep.get("pe") or {}).get("signature") or {}
+            p = f["probability"]
+            cls = "malicious" if f["verdict"] == "malicious" else ("borderline" if (p or 0) >= BORDERLINE else "benign")
+            rows.append({"f": f, "rep": rep, "eng": eng, "cls": cls, "signed": isinstance(sig, dict) and sig.get("status") == "Valid",
+                         "sigs": {s["id"] for s in rep.get("signals") or []}})
+        pts = [{"x": r["eng"]["pe_v3"], "y": r["eng"]["pe_v1s"], "cls": r["cls"], "signed": r["signed"], "name": r["f"]["name"],
+                "sha": r["f"]["sha256"]} for r in rows if "pe_v3" in r["eng"] and "pe_v1s" in r["eng"]]
+        pearson = None
+        if len(pts) >= 3:
+            xs, ys = [q["x"] for q in pts], [q["y"] for q in pts]
+            mx, my = sum(xs) / len(xs), sum(ys) / len(ys)
+            sxy = sum((a - mx) * (b - my) for a, b in zip(xs, ys))
+            sx, sy = sum((a - mx) ** 2 for a in xs) ** .5, sum((b - my) ** 2 for b in ys) ** .5
+            pearson = sxy / (sx * sy) if sx and sy else None
+        agree = sum(1 for q in pts if (q["x"] >= thr) == (q["y"] >= thr_v1s))
+        # score over time
+        ts = sorted(rows, key=lambda r: r["f"]["first_seen"] or "")
+        timeline, labels = [], []
+        if ts:
+            t0 = datetime.fromisoformat(ts[0]["f"]["first_seen"]).timestamp()
+            t1 = datetime.fromisoformat(ts[-1]["f"]["first_seen"]).timestamp()
+            span = max(t1 - t0, 1)
+            for i, r in enumerate(ts):
+                t = (datetime.fromisoformat(r["f"]["first_seen"]).timestamp() - t0) / span if t1 > t0 else (i + .5) / len(ts)
+                timeline.append({"t": t, "y": r["f"]["probability"] or 0, "cls": r["cls"], "signed": r["signed"],
+                                 "name": r["f"]["name"], "sha": r["f"]["sha256"], "when": r["f"]["first_seen"].replace("T", " ")[:16]})
+            fmt = (lambda s: s[5:16].replace("T", " ")) if t1 - t0 < 86400 * 2 else (lambda s: s[:10])
+            labels = [(0, fmt(ts[0]["f"]["first_seen"])), (1, fmt(ts[-1]["f"]["first_seen"]))]
+            if t1 > t0:
+                labels.insert(1, (0.5, fmt(datetime.fromtimestamp((t0 + t1) / 2, timezone.utc).isoformat())))
+        # signal co-occurrence + flag rate
+        counts = Counter(s for r in rows for s in r["sigs"])
+        top = [k for k, _ in counts.most_common(9)]
+        titles = {}
+        for r in rows:
+            for s in r["rep"].get("signals") or []:
+                titles.setdefault(s["id"], explain.generic_title(s))
+        co = [[sum(1 for r in rows if a in r["sigs"] and b in r["sigs"]) for b in top] for a in top]
+        flag_rate = {k: sum(1 for r in rows if k in r["sigs"] and r["cls"] == "malicious") / counts[k] for k in top}
+        base_rate = sum(1 for r in rows if r["cls"] == "malicious") / len(rows) if rows else 0
+        # reason-group heatmap for the highest-scoring files
+        order = [g for g in explain.GROUPS if g != "size"]
+        hot = sorted(rows, key=lambda r: -(r["f"]["probability"] or 0))[:12]
+        heat = []
+        for r in hot:
+            gm = {g["group"]: g["contribution"] for g in (r["rep"].get("explanation") or {}).get("groups", [])}
+            heat.append({"name": r["f"]["name"], "sha": r["f"]["sha256"], "p": r["f"]["probability"] or 0, "cls": r["cls"],
+                         "cells": [gm.get(g, 0.0) for g in order], "nsis": "format_nsis" in r["sigs"], "signed": r["signed"]})
+        hmax = max([abs(c) for h in heat for c in h["cells"]] + [0.01])
+        return {"scatter": pts, "pearson": pearson, "agree": agree, "thr_v1s": thr_v1s, "timeline": timeline, "labels": labels,
+                "co_ids": top, "co_titles": [titles.get(k, k) for k in top], "co": co, "co_counts": [counts[k] for k in top],
+                "flag_rate": [flag_rate[k] for k in top], "base_rate": base_rate,
+                "heat": heat, "heat_groups": [explain.GROUPS[g][0] for g in order], "hmax": hmax}
+
     @app.get("/")
+    @login_required
     def home():
-        return render_template("home.html")
+        files = db.q("SELECT * FROM files")
+        stats = {"total": len(files), "flagged": sum(1 for f in files if f["verdict"] == "malicious"),
+                 "review": sum(1 for f in files if not f["disposition"] and (f["verdict"] == "malicious" or (f["probability"] or 0) >= BORDERLINE)),
+                 "sensors": sum(s["online"] for s in sensors_with_health())}
+        recent = [summarize(f) for f in db.q("SELECT * FROM files ORDER BY last_seen DESC LIMIT 6")]
+        return render_template("home.html", stats=stats, recent=recent)
+
+    @app.get("/dashboard")
+    @login_required
+    def overview():
+        files = db.q("SELECT * FROM files")
+        done = [f for f in files if f["status"] == "done"]
+        today = datetime.now(timezone.utc).date()
+        days = [(today - timedelta(days=i)).isoformat() for i in range(13, -1, -1)]
+        per_day = {d: Counter() for d in days}
+        for r in db.q("SELECT substr(s.at,1,10) day, f.verdict v, f.probability p, f.status st FROM submissions s "
+                      "JOIN files f ON f.sha256=s.sha256 WHERE s.at >= ?", (days[0],)):
+            if r["day"] in per_day:
+                k = "pending" if r["st"] in ("queued", "scanning") else ("error" if r["st"] == "error" else
+                    ("malicious" if r["v"] == "malicious" else ("borderline" if (r["p"] or 0) >= BORDERLINE else "benign")))
+                per_day[r["day"]][k] += 1
+        mal = [f for f in done if f["verdict"] == "malicious"]
+        border = [f for f in done if f["verdict"] == "benign" and (f["probability"] or 0) >= BORDERLINE]
+        sensors = sensors_with_health()
+        ms = [f["scan_ms"] for f in done if f["scan_ms"] is not None]
+        kpi = {
+            "total": len(files), "today": sum(1 for f in files if (f["first_seen"] or "")[:10] == today.isoformat()),
+            "malicious": len(mal), "borderline": len(border),
+            "benign": sum(1 for f in done if f["verdict"] == "benign") - len(border),
+            "pending": sum(1 for f in files if f["status"] in ("queued", "scanning")),
+            "errors": sum(1 for f in files if f["status"] == "error"),
+            "unreviewed": sum(1 for f in mal + border if not f["disposition"]),
+            "false_positives": sum(1 for f in files if f["disposition"] == "false_positive"),
+            "confirmed": sum(1 for f in files if f["disposition"] == "confirmed"),
+            "sensors_online": sum(s["online"] for s in sensors), "sensors_total": len(sensors),
+            "median_ms": round(statistics.median(ms)) if ms else None,
+        }
+        spark = {k: [per_day[d][k] for d in days] for k in ("malicious", "benign", "borderline")}
+        spark["total"] = [sum(per_day[d].values()) for d in days]
+        attention = sorted((summarize(f) for f in files if not f["disposition"] and (
+            f["verdict"] == "malicious" or f["status"] == "error" or (f["verdict"] == "benign" and (f["probability"] or 0) >= BORDERLINE))),
+            key=lambda s: -(s["probability"] or 0))[:8]
+        group_push: dict[str, list[float]] = defaultdict(list)
+        sig_counts: Counter = Counter()
+        sig_flagged: Counter = Counter()
+        sig_titles: dict[str, str] = {}
+        bins = [0] * 20
+        for f in done:
+            rep = json.loads(f["report_json"] or "{}")
+            if f["verdict"] == "malicious":
+                for g in (rep.get("explanation") or {}).get("groups", []):
+                    if g["contribution"] > 0:
+                        group_push[g["group"]].append(g["contribution"])
+            for s in rep.get("signals") or []:
+                key = s["id"]
+                sig_counts[key] += 1
+                sig_titles.setdefault(key, explain.generic_title(s))
+                if f["verdict"] == "malicious":
+                    sig_flagged[key] += 1
+            if f["probability"] is not None:
+                bins[min(int(f["probability"] * 20), 19)] += 1
+        reasons_agg = sorted(((explain.GROUPS[g][0], sum(v) / max(len(mal), 1), len(v)) for g, v in group_push.items()), key=lambda x: -x[1])[:6]
+        corr = correlations(done)
+        signals_agg = [(sig_titles[k], n, sig_flagged[k]) for k, n in sig_counts.most_common(8)]
+        recent = db.q("SELECT s.at, s.source, s.sensor_id, s.filename, f.sha256, f.status, f.verdict, f.probability "
+                      "FROM submissions s JOIN files f ON f.sha256=s.sha256 ORDER BY s.id DESC LIMIT 10")
+        mix = [("malicious", "Malicious", kpi["malicious"]), ("borderline", "Borderline", kpi["borderline"]),
+               ("benign", "Benign", kpi["benign"]), ("error", "Error", kpi["errors"]), ("pending", "Pending", kpi["pending"])]
+        return render_template("overview.html", st=kpi, per_day=per_day, days=days, spark=spark, attention=attention,
+                               reasons_agg=reasons_agg, signals_agg=signals_agg, bins=bins, recent=recent, mix=mix,
+                               sensors=sensors[:6], n_done=len(done), corr=corr,
+                               day_max=max([sum(c.values()) for c in per_day.values()] + [1]))
+
+    # ---------- analyze / search ----------
+    @app.get("/analyze")
+    @login_required
+    def analyze():
+        return redirect(url_for("home"))
 
     @app.post("/upload")
+    @login_required
     def upload():
         f = request.files.get("file")
-        if not f:
-            flash("Choose a file first.")
-            return redirect(url_for("home"))
+        if not f or not f.filename:
+            flash("Choose a file first.", "error")
+            return redirect(url_for("analyze"))
         try:
-            sha, _ = ingest(f.read(), f.filename, "web")
+            sha, created = ingest(f.read(), f.filename, "web")
         except BadUpload as e:
-            flash(str(e))
-            return redirect(url_for("home"))
+            flash(str(e), "error")
+            return redirect(url_for("analyze"))
+        if not created:
+            flash("This file was analysed before; showing the existing report.", "info")
         return redirect(url_for("report", sha=sha))
 
     @app.get("/search")
+    @login_required
     def search():
         q = request.args.get("q", "").strip()
         if not q:
-            return redirect(url_for("home"))
+            return redirect(url_for("submissions"))
         rows = find(q)
         if len(rows) == 1:
             return redirect(url_for("report", sha=rows[0]["sha256"]))
-        return render_template("search.html", q=q, rows=rows)
+        return render_template("search.html", q=q, rows=[summarize(r) for r in rows])
 
+    # ---------- report ----------
     @app.get("/file/<sha>")
+    @login_required
     def report(sha: str):
-        rep = full_report(sha.lower())
-        if not rep:
-            abort(404)
+        rep = full_report(sha.lower()) or abort(404)
         return render_template("report.html", r=rep, print_mode=False)
 
     @app.get("/file/<sha>/print")
+    @login_required
     def report_print(sha: str):
         rep = full_report(sha.lower()) or abort(404)
         return render_template("report.html", r=rep, print_mode=True)
 
     @app.get("/file/<sha>/json")
+    @login_required
     def report_json(sha: str):
         rep = full_report(sha.lower()) or abort(404)
         return Response(json.dumps(rep, indent=2, default=str), mimetype="application/json",
                         headers={"Content-Disposition": f"attachment; filename=sa2_{sha[:12]}.json"})
 
     @app.get("/file/<sha>/status")
+    @login_required
     def report_status(sha: str):
         f = db.one("SELECT status FROM files WHERE sha256=?", (sha.lower(),)) or abort(404)
         return jsonify(f)
+
+    @app.post("/file/<sha>/disposition")
+    @login_required
+    def set_disposition(sha: str):
+        d = request.form.get("disposition", "")
+        if d not in DISPOSITIONS:
+            abort(400)
+        db.x("UPDATE files SET disposition=?, disposition_note=?, disposition_at=? WHERE sha256=?",
+             (d, request.form.get("note", "")[:500], now() if d else None, sha.lower()))
+        flash(f"Disposition set to {DISPOSITIONS[d]}.", "ok")
+        return redirect(request.referrer or url_for("report", sha=sha))
+
+    @app.post("/file/<sha>/reanalyse")
+    @login_required
+    def reanalyse(sha: str):
+        if db.x("UPDATE files SET status='queued' WHERE sha256=?", (sha.lower(),)):
+            jobs.put(sha.lower())
+        return redirect(url_for("report", sha=sha))
 
     def csv_rows(shas: list[str]) -> list[dict[str, Any]]:
         rows = []
         for sha in shas:
             r = full_report(sha)
             eng = {e["name"]: e for e in r.get("engines", [])}
+            sig = (r.get("pe") or {}).get("signature")
+            a = r.get("assessment") or {}
+            top = ((r.get("explanation") or {}).get("top") or [{}])[0]
             rows.append({
                 "sha256": r["sha256"], "md5": r["md5"], "sha1": r["sha1"], "imphash": r.get("imphash"),
                 "size": r["size"], "names": ";".join(r["names"]), "status": r["status"], "verdict": r["verdict"],
+                "risk": r["risk"], "assessment": a.get("label"), "disposition": DISPOSITIONS.get(r.get("disposition") or "", ""),
                 "flag_count": r.get("flag_count"), "engine_count": r.get("engine_count"),
                 **{f"{n}_{k}": eng.get(n, {}).get(k) for n in ("pe_v3", "pe_v1s") for k in ("probability", "threshold", "flagged")},
-                "signature": (r.get("pe") or {}).get("signature"), "first_seen": r["first_seen"], "last_seen": r["last_seen"],
-                "submissions": len(r["submissions"]), "sources": ";".join(sorted({s["source"] for s in r["submissions"]})),
-                "scan_ms": r.get("scan_ms"),
+                "top_reason": top.get("title"), "top_reason_contribution": top.get("contribution"),
+                "signals": ";".join(s["title"] for s in r.get("all_signals", [])),
+                "signature": sig.get("status") if isinstance(sig, dict) else sig,
+                "signer": sig.get("signer") if isinstance(sig, dict) else "",
+                "first_seen": r["first_seen"], "last_seen": r["last_seen"], "submissions": len(r["submissions"]),
+                "sources": ";".join(sorted({s["source"] for s in r["submissions"]})), "scan_ms": r.get("scan_ms"),
             })
         return rows
 
@@ -246,22 +503,167 @@ def create_app(data_dir: Path | None = None, *, start_worker: bool = True, scan_
         return Response(buf.getvalue(), mimetype="text/csv", headers={"Content-Disposition": f"attachment; filename={name}"})
 
     @app.get("/file/<sha>/csv")
+    @login_required
     def report_csv(sha: str):
         if not db.one("SELECT 1 FROM files WHERE sha256=?", (sha.lower(),)):
             abort(404)
         return csv_response(csv_rows([sha.lower()]), f"sa2_{sha[:12]}.csv")
 
-    @app.get("/api")
-    def api_doc():
-        return render_template("api.html")
+    # ---------- submissions ----------
+    def filtered() -> list[dict[str, Any]]:
+        a, where, args = request.args, [], []
+        v = a.get("verdict", "")
+        if v == "borderline":
+            where.append("f.verdict='benign' AND f.probability >= ?")
+            args.append(BORDERLINE)
+        elif v in ("malicious", "benign"):
+            where.append("f.verdict=?")
+            args.append(v)
+        elif v in ("error", "queued", "scanning"):
+            where.append("f.status=?")
+            args.append(v)
+        d = a.get("disposition", "")
+        if d == "unreviewed" or (d and d in DISPOSITIONS):
+            where.append("COALESCE(f.disposition,'')=?")
+            args.append("" if d == "unreviewed" else d)
+        if a.get("source"):
+            where.append("f.sha256 IN (SELECT sha256 FROM submissions WHERE source=?)")
+            args.append(a["source"])
+        if a.get("sensor"):
+            where.append("f.sha256 IN (SELECT sha256 FROM submissions WHERE sensor_id=?)")
+            args.append(a["sensor"])
+        if a.get("q"):
+            where.append("(f.sha256 LIKE ? OR f.md5 LIKE ? OR f.sha1 LIKE ? OR f.name LIKE ? OR f.imphash=?)")
+            like = f"%{a['q'].strip()}%"
+            args += [like, like, like, like, a["q"].strip()]
+        if a.get("from"):
+            where.append("f.last_seen >= ?")
+            args.append(a["from"])
+        if a.get("to"):
+            where.append("f.first_seen <= ?")
+            args.append(a["to"] + "T23:59:59")
+        sql = "SELECT f.*, (SELECT COUNT(*) FROM submissions s WHERE s.sha256=f.sha256) n_sub, " \
+              "(SELECT GROUP_CONCAT(DISTINCT source) FROM submissions s WHERE s.sha256=f.sha256) sources FROM files f"
+        if where:
+            sql += " WHERE " + " AND ".join(where)
+        order = {"score": "f.probability DESC", "name": "f.name COLLATE NOCASE", "seen": "f.last_seen DESC"}.get(a.get("sort", ""), "f.last_seen DESC")
+        return db.q(sql + f" ORDER BY {order}", args)
 
-    # ---------- API ----------
+    @app.get("/submissions")
+    @login_required
+    def submissions():
+        rows = filtered()
+        fmt = request.args.get("export")
+        if fmt == "csv":
+            return csv_response(csv_rows([r["sha256"] for r in rows]), "sa2_submissions.csv")
+        if fmt == "json":
+            data = [full_report(r["sha256"]) for r in rows]
+            return Response(json.dumps(data, indent=2, default=str), mimetype="application/json",
+                            headers={"Content-Disposition": "attachment; filename=sa2_submissions.json"})
+        page = max(int(request.args.get("page", 1) or 1), 1)
+        pages = max((len(rows) + 24) // 25, 1)
+        page = min(page, pages)
+        args = {k: v for k, v in request.args.items() if k != "page"}
+        return render_template("submissions.html", rows=[summarize(r) for r in rows[(page - 1) * 25: page * 25]],
+                               total=len(rows), page=page, pages=pages, args=args,
+                               sensors=[s["sensor_id"] for s in db.q("SELECT sensor_id FROM sensors")])
+
+    # ---------- insights ----------
+    @app.get("/insights")
+    @login_required
+    def insights():
+        only = request.args.get("only", "all")
+        done = db.q("SELECT * FROM files WHERE status='done'")
+        rows = [f for f in done if only != "flagged" or f["verdict"] == "malicious"]
+        per_dll: dict[str, Counter] = {}
+        files_per_dll: Counter = Counter()
+        sig_by_verdict: dict[str, Counter] = defaultdict(Counter)
+        sig_meta: dict[str, dict] = {}
+        feat_push: dict[str, list[float]] = defaultdict(list)
+        feat_title: dict[str, str] = {}
+        for f in done:
+            rep = json.loads(f["report_json"] or "{}")
+            for s in rep.get("signals") or []:
+                key = s["id"]
+                sig_by_verdict[key][f["verdict"]] += 1
+                sig_meta.setdefault(key, {**s, "title": explain.generic_title(s)})
+            if f["verdict"] == "malicious":
+                for r in (rep.get("explanation") or {}).get("top", []):
+                    if r["contribution"] > 0:
+                        feat_push[r["title"]].append(r["contribution"])
+        for f in rows:
+            imps = (json.loads(f["report_json"] or "{}").get("pe") or {}).get("imports", {})
+            for dll, fns in imps.items():
+                files_per_dll[dll] += 1
+                per_dll.setdefault(dll, Counter()).update(set(fns))
+        cols = [(dll, n, per_dll[dll].most_common(8)) for dll, n in files_per_dll.most_common(6)]
+        sigs = sorted(((sig_meta[k], c) for k, c in sig_by_verdict.items()), key=lambda x: -sum(x[1].values()))
+        feats = sorted(((t, len(v), sum(v) / len(v)) for t, v in feat_push.items()), key=lambda x: -x[1] * x[2])[:10]
+        n_mal = sum(1 for f in done if f["verdict"] == "malicious")
+        return render_template("insights.html", cols=cols, only=only, n=len(rows), sigs=sigs, feats=feats,
+                               n_done=len(done), n_mal=n_mal, ref=explain.reference())
+
+    # ---------- sensors ----------
+    @app.route("/sensors", methods=["GET", "POST"])
+    @login_required
+    def sensors():
+        if request.method == "POST" and request.form.get("action") == "rotate":
+            db.set_setting("api_key", secrets.token_urlsafe(24))
+            flash("API key rotated. Paste the new key into every EDR sensor's Settings page.", "ok")
+            return redirect(url_for("sensors"))
+        return render_template("sensors.html", sensors=sensors_with_health(), api_key=db.setting("api_key"),
+                               base=request.host_url.rstrip("/"))
+
+    @app.get("/sensors/<sid>")
+    @login_required
+    def sensor(sid: str):
+        s = next((x for x in sensors_with_health() if x["sensor_id"] == sid), None) or abort(404)
+        hist = db.q("SELECT at, stats_json FROM sensor_stats WHERE sensor_id=? ORDER BY at", (sid,))
+        series = {k: [] for k in ("processes_observed", "connections_observed", "uploads_sent", "alerts_created")}
+        for h in hist[-240:]:
+            st = json.loads(h["stats_json"] or "{}").get("totals", {})
+            for k in series:
+                series[k].append(st.get(k, 0))
+        files = [summarize(f) for f in db.q(
+            "SELECT f.* FROM files f WHERE f.sha256 IN (SELECT sha256 FROM submissions WHERE sensor_id=?) ORDER BY f.last_seen DESC LIMIT 50", (sid,))]
+        return render_template("sensor.html", s=s, series=series, files=files, n_hist=len(hist))
+
+    # ---------- model / settings / glossary ----------
+    @app.get("/model")
+    @login_required
+    def model():
+        blind_path = Path("artifacts/v3.2/blind/blind_results.json")
+        blind = json.loads(blind_path.read_text(encoding="utf-8")) if blind_path.is_file() else {}
+        fs = freeze_status()
+        return render_template("model.html", thrs=scanner.thresholds(), bad=fs["bad"], models_ok=fs["models_ok"], blind=blind,
+                               cal=json.loads(scanner.CALIBRATION.read_text(encoding="utf-8")), ref=explain.reference())
+
+    @app.route("/settings", methods=["GET", "POST"])
+    @login_required
+    def settings():
+        if request.method == "POST" and request.form.get("action") == "rescan":
+            n = 0
+            for r in db.q("SELECT sha256 FROM files"):
+                db.x("UPDATE files SET status='queued' WHERE sha256=?", (r["sha256"],))
+                jobs.put(r["sha256"])
+                n += 1
+            flash(f"Queued {n} file(s) for re-analysis.", "ok")
+            return redirect(url_for("settings"))
+        return render_template("settings.html", api_key=db.setting("api_key"), base=request.host_url.rstrip("/"),
+                               env_pw=bool(os.environ.get("SA2_ADMIN_PASSWORD")), data_dir=str(data_dir))
+
+    @app.get("/glossary")
+    @login_required
+    def glossary():
+        return render_template("glossary.html", api_groups=explain.API_GROUPS, packers=explain.PACKERS, extra=explain.GLOSSARY_EXTRA)
+
+    # ---------- API (machine clients, X-API-Key) ----------
     @app.get("/api/v1/ping")
     @require_key
     def api_ping():
-        thr = scanner.thresholds()
+        t = scanner.thresholds()
         return jsonify(ok=True, server="SA2 Scan", model_tag=scanner.MODEL_TAG,
-                       thresholds={k: v["threshold"] for k, v in thr.items()}, time=now())
+                       thresholds={k: v["threshold"] for k, v in t.items()}, time=now())
 
     @app.post("/api/v1/sensors/heartbeat")
     @require_key
@@ -302,186 +704,25 @@ def create_app(data_dir: Path | None = None, *, start_worker: bool = True, scan_
             return jsonify(error=str(e)), e.code
         return jsonify(sha256=sha, status="queued" if created else "known"), 202
 
-    # ---------- admin ----------
-    @app.route("/admin/login", methods=["GET", "POST"])
-    def admin_login():
-        if request.method == "POST":
-            if hmac.compare_digest(request.form.get("password", ""), os.environ.get("SA2_ADMIN_PASSWORD") or db.setting("admin_password")):
-                session["admin"] = True
-                nxt = request.args.get("next", "")
-                return redirect(nxt if nxt.startswith("/admin") else url_for("admin_hud"))
-            flash("Wrong password.")
-        return render_template("admin_login.html")
-
-    @app.get("/admin/logout")
-    def admin_logout():
-        session.clear()
-        return redirect(url_for("home"))
-
-    def sensors_with_health() -> list[dict[str, Any]]:
-        rows = db.q("SELECT * FROM sensors ORDER BY last_heartbeat DESC")
-        for s in rows:
-            s["online"] = age_seconds(s["last_heartbeat"]) <= ONLINE_SECONDS
-            s["stats"] = json.loads(s.pop("stats_json") or "{}")
-        return rows
-
-    @app.get("/admin")
-    @require_admin
-    def admin_hud():
-        done = db.q("SELECT probability, scan_ms, verdict, report_json FROM files WHERE status='done'")
-        ms = [d["scan_ms"] for d in done if d["scan_ms"] is not None]
-        sensors = sensors_with_health()
-        kpi = {
-            "total": db.val("SELECT COUNT(*) FROM files"),
-            "flagged": db.val("SELECT COUNT(*) FROM files WHERE verdict='malicious'"),
-            "benign": db.val("SELECT COUNT(*) FROM files WHERE verdict='benign'"),
-            "queued": db.val("SELECT COUNT(*) FROM files WHERE status IN ('queued','scanning')"),
-            "errors": db.val("SELECT COUNT(*) FROM files WHERE status='error'"),
-            "sensors_online": sum(s["online"] for s in sensors),
-            "median_ms": round(statistics.median(ms)) if ms else None,
-        }
-        bins = [0] * 20
-        for d in done:
-            if d["probability"] is not None:
-                bins[min(int(d["probability"] * 20), 19)] += 1
-        days = [(datetime.now(timezone.utc) - timedelta(days=i)).date().isoformat() for i in range(13, -1, -1)]
-        per_day = {d: Counter() for d in days}
-        for r in db.q("SELECT substr(s.at,1,10) day, COALESCE(f.verdict, f.status) v, COUNT(*) n FROM submissions s "
-                      "JOIN files f ON f.sha256=s.sha256 WHERE s.at >= ? GROUP BY day, v", (days[0],)):
-            if r["day"] in per_day:
-                per_day[r["day"]][r["v"]] += r["n"]
-        sources = db.q("SELECT source, COUNT(*) n FROM submissions GROUP BY source ORDER BY n DESC")
-        # ponytail: parses every report JSON per HUD load; fine for coursework scale, add an imports table if slow
-        dll_count: Counter = Counter()
-        for d in done:
-            dll_count.update((json.loads(d["report_json"] or "{}").get("pe") or {}).get("imports", {}).keys())
-        recent = db.q("SELECT s.at, s.source, s.sensor_id, s.filename, f.sha256, f.status, f.verdict, f.probability "
-                      "FROM submissions s JOIN files f ON f.sha256=s.sha256 ORDER BY s.id DESC LIMIT 12")
-        return render_template("admin_hud.html", kpi=kpi, bins=bins, per_day=per_day, sources=sources,
-                               day_max=max([sum(c.values()) for c in per_day.values()] + [1]),
-                               dlls=dll_count.most_common(10), n_done=len(done), recent=recent, sensors=sensors[:5])
-
-    def filtered() -> list[dict[str, Any]]:
-        a, where, args = request.args, [], []
-        for col in ("verdict", "status"):
-            if a.get(col):
-                where.append(f"f.{col}=?")
-                args.append(a[col])
-        if a.get("source"):
-            where.append("f.sha256 IN (SELECT sha256 FROM submissions WHERE source=?)")
-            args.append(a["source"])
-        if a.get("sensor"):
-            where.append("f.sha256 IN (SELECT sha256 FROM submissions WHERE sensor_id=?)")
-            args.append(a["sensor"])
-        if a.get("q"):
-            where.append("(f.sha256 LIKE ? OR f.md5 LIKE ? OR f.sha1 LIKE ? OR f.name LIKE ? OR f.imphash=?)")
-            like = f"%{a['q'].strip()}%"
-            args += [like, like, like, like, a["q"].strip()]
-        for key, op in (("min", ">="), ("max", "<=")):
-            try:
-                v = float(a.get(key, ""))
-                where.append(f"f.probability {op} ?")
-                args.append(v)
-            except ValueError:
-                pass
-        if a.get("from"):
-            where.append("f.last_seen >= ?")
-            args.append(a["from"])
-        if a.get("to"):
-            where.append("f.first_seen <= ?")
-            args.append(a["to"] + "T23:59:59")
-        sql = "SELECT f.*, (SELECT COUNT(*) FROM submissions s WHERE s.sha256=f.sha256) n_sub, " \
-              "(SELECT GROUP_CONCAT(DISTINCT source) FROM submissions s WHERE s.sha256=f.sha256) sources FROM files f"
-        if where:
-            sql += " WHERE " + " AND ".join(where)
-        return db.q(sql + " ORDER BY f.last_seen DESC", args)
-
-    @app.get("/admin/submissions")
-    @require_admin
-    def admin_submissions():
-        rows = filtered()
-        fmt = request.args.get("export")
-        if fmt == "csv":
-            return csv_response(csv_rows([r["sha256"] for r in rows]), "sa2_submissions.csv")
-        if fmt == "json":
-            data = [full_report(r["sha256"]) for r in rows]
-            return Response(json.dumps(data, indent=2, default=str), mimetype="application/json",
-                            headers={"Content-Disposition": "attachment; filename=sa2_submissions.json"})
-        page = max(int(request.args.get("page", 1) or 1), 1)
-        pages = max((len(rows) + 49) // 50, 1)
-        args = {k: v for k, v in request.args.items() if k != "page"}
-        return render_template("admin_submissions.html", rows=rows[(page - 1) * 50: page * 50], total=len(rows),
-                               page=min(page, pages), pages=pages, args=args,
-                               sensors=[s["sensor_id"] for s in db.q("SELECT sensor_id FROM sensors")])
-
-    @app.post("/admin/reanalyse/<sha>")
-    @require_admin
-    def admin_reanalyse(sha: str):
-        if db.x("UPDATE files SET status='queued' WHERE sha256=?", (sha.lower(),)):
-            jobs.put(sha.lower())
-        return redirect(url_for("report", sha=sha))
-
-    @app.get("/admin/matrix")
-    @require_admin
-    def admin_matrix():
-        only = request.args.get("only", "all")
-        sql = "SELECT sha256, report_json FROM files WHERE status='done'" + (" AND verdict='malicious'" if only == "flagged" else "")
-        per_dll: dict[str, Counter] = {}
-        files_per_dll: Counter = Counter()
-        rows = db.q(sql)
-        for r in rows:
-            imps = (json.loads(r["report_json"] or "{}").get("pe") or {}).get("imports", {})
-            for dll, fns in imps.items():
-                files_per_dll[dll] += 1
-                per_dll.setdefault(dll, Counter()).update(set(fns))
-        cols = [(dll, n, per_dll[dll].most_common(8)) for dll, n in files_per_dll.most_common(6)]
-        return render_template("admin_matrix.html", cols=cols, only=only, n=len(rows))
-
-    @app.route("/admin/sensors", methods=["GET", "POST"])
-    @require_admin
-    def admin_sensors():
-        if request.method == "POST" and request.form.get("action") == "rotate":
-            db.set_setting("api_key", secrets.token_urlsafe(24))
-            flash("API key rotated. Update it on every EDR Settings page.")
-            return redirect(url_for("admin_sensors"))
-        return render_template("admin_sensors.html", sensors=sensors_with_health(), api_key=db.setting("api_key"),
-                               base=request.host_url.rstrip("/"))
-
-    @app.get("/admin/sensors/<sid>")
-    @require_admin
-    def admin_sensor(sid: str):
-        s = next((x for x in sensors_with_health() if x["sensor_id"] == sid), None) or abort(404)
-        hist = db.q("SELECT at, stats_json FROM sensor_stats WHERE sensor_id=? ORDER BY at", (sid,))
-        series = {k: [] for k in ("processes_observed", "connections_observed", "uploads_sent", "alerts_created")}
-        for h in hist[-240:]:
-            st = json.loads(h["stats_json"] or "{}").get("totals", {})
-            for k in series:
-                series[k].append(st.get(k, 0))
-        files = db.q("SELECT f.sha256, f.name, f.verdict, f.probability, MAX(s.at) at FROM submissions s JOIN files f "
-                     "ON f.sha256=s.sha256 WHERE s.sensor_id=? GROUP BY f.sha256 ORDER BY at DESC LIMIT 50", (sid,))
-        return render_template("admin_sensor.html", s=s, series=series, files=files, n_hist=len(hist))
-
-    @app.get("/admin/model")
-    @require_admin
-    def admin_model():
-        from src.v3 import freeze
-        bad = freeze.verify(tag=scanner.MODEL_TAG)
-        blind_path = Path("artifacts/v3.2/blind/blind_results.json")
-        blind = json.loads(blind_path.read_text(encoding="utf-8")) if blind_path.is_file() else {}
-        models_ok = not any("/models/" in b.replace("\\", "/") for b in bad)
-        return render_template("admin_model.html", thrs=scanner.thresholds(), bad=bad, blind=blind, models_ok=models_ok,
-                               cal=json.loads(scanner.CALIBRATION.read_text(encoding="utf-8")))
-
     @app.errorhandler(413)
     def too_big(_):
         if request.path.startswith("/api/"):
             return jsonify(error="File larger than 50 MB"), 413
-        flash("File larger than 50 MB.")
-        return redirect(url_for("home"))
+        flash("File larger than 50 MB.", "error")
+        return redirect(url_for("analyze"))
+
+    @app.errorhandler(404)
+    def not_found(_):
+        if request.path.startswith("/api/"):
+            return jsonify(error="not found"), 404
+        return render_template("error.html", code=404, msg="Nothing here. The file or page does not exist."), 404
 
     if start_worker:
-        for r in db.q("SELECT sha256 FROM files WHERE status IN ('queued','scanning')"):
-            jobs.put(r["sha256"])
+        # re-scan anything still queued, and reports produced by an older report format (adds explanations)
+        for r in db.q("SELECT sha256, status, report_json FROM files"):
+            old = r["status"] in ("done", "error") and json.loads(r["report_json"] or "{}").get("report_version", 1) < scanner.REPORT_VERSION
+            if r["status"] in ("queued", "scanning") or old:
+                jobs.put(r["sha256"])
         threading.Thread(target=worker, daemon=True, name="scan-worker").start()
     return app
 
@@ -497,8 +738,8 @@ def main(argv: list[str] | None = None) -> int:
     db: DB = app.config["DB"]
     pw = "(from SA2_ADMIN_PASSWORD)" if os.environ.get("SA2_ADMIN_PASSWORD") else db.setting("admin_password")
     print(f"\n  SA2 Scan       http://{args.host}:{args.port}/")
-    print(f"  Admin panel    http://{args.host}:{args.port}/admin   password: {pw}")
-    print(f"  EDR API key    {db.setting('api_key')}\n")
+    print(f"  Sign in with   password: {pw}")
+    print(f"  EDR API key    {db.setting('api_key')}\n", flush=True)
     app.run(host=args.host, port=args.port, threaded=True, use_reloader=False)
     return 0
 

@@ -1,0 +1,43 @@
+{% from "_ui.html" import icon, mark %}<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><link rel="icon" href="data:,">
+<title>{% block title %}SA2 Scan{% endblock %} · SA2 Scan</title>
+<script>try { const t = localStorage.getItem('sa2-theme'); if (t) document.documentElement.dataset.theme = t; } catch (e) {}</script>
+<link rel="stylesheet" href="{{ url_for('static', filename='app.css') }}">
+</head>
+<body>
+{% set ep = request.endpoint %}
+<header class="vt-top">
+  <a class="mark" href="{{ url_for('home') }}" title="SA2 Scan home">{{ mark() }}<span>SA2 SCAN</span></a>
+  <form class="vt-search" action="{{ url_for('search') }}" method="get" role="search">
+    {{ icon('search', 'sm') }}<input name="q" placeholder="File hash (SHA-256 / SHA-1 / MD5), file name or imphash"
+      value="{{ request.args.get('q', '') if ep == 'search' else '' }}" aria-label="Search">
+  </form>
+  <nav class="vt-nav">
+    <a class="{{ 'on' if ep == 'overview' }}" href="{{ url_for('overview') }}">{{ icon('overview', 'sm') }}Dashboard</a>
+    <a class="{{ 'on' if ep in ('submissions', 'search', 'report') }}" href="{{ url_for('submissions') }}">{{ icon('list', 'sm') }}Submissions
+      {% if pending_count %}<span class="count" title="queued or scanning">{{ pending_count }}</span>{% endif %}</a>
+    <a class="{{ 'on' if ep == 'insights' }}" href="{{ url_for('insights') }}">{{ icon('chart', 'sm') }}Insights</a>
+    <a class="{{ 'on' if ep in ('sensors', 'sensor') }}" href="{{ url_for('sensors') }}">{{ icon('sensor', 'sm') }}Sensors</a>
+    <a class="{{ 'on' if ep == 'glossary' }}" href="{{ url_for('glossary') }}" title="Signals & glossary">{{ icon('book', 'sm') }}Glossary</a>
+    <span class="sep"></span>
+    <a class="{{ 'on' if ep == 'home' }}" href="{{ url_for('home') }}" title="Analyze a file">{{ icon('upload', 'sm') }}</a>
+    <a class="{{ 'on' if ep == 'settings' }}" href="{{ url_for('settings') }}" title="Settings & API">{{ icon('settings', 'sm') }}</a>
+    <button type="button" data-theme-toggle title="Toggle light / dark">{{ icon('sun', 'sm') }}</button>
+    <a href="{{ url_for('logout') }}" title="Sign out">{{ icon('logout', 'sm') }}</a>
+    <a class="modelchip" href="{{ url_for('model') }}" title="Model status"><span class="dot {{ '' if models_ok else 'bad' }}"></span>v3.2 · {{ '%.4f' % thr }}</a>
+  </nav>
+</header>
+<main class="content">
+  {% with msgs = get_flashed_messages(with_categories=true) %}{% for cat, m in msgs %}
+    <div class="flash {{ cat if cat in ('error', 'ok', 'info') else 'info' }}">{{ icon('info', 'sm') }}{{ m }}</div>{% endfor %}{% endwith %}
+  {% block page %}
+  <div class="page-head"><div>{% block crumbs %}{% endblock %}<h1>{% block heading %}{% endblock %}</h1></div>{% block headactions %}{% endblock %}</div>
+  {% block body %}{% endblock %}
+  {% endblock %}
+</main>
+<div class="footer">SA2 Scan · static analysis only, files are never executed · ICT3214 coursework</div>
+<script src="{{ url_for('static', filename='app.js') }}"></script>
+</body>
+</html>

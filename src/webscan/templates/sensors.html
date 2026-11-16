@@ -1,0 +1,40 @@
+{% extends "base.html" %}
+{% from "_ui.html" import icon, empty %}
+{% block title %}EDR sensors{% endblock %}
+{% block heading %}EDR sensors{% endblock %}
+{% block body %}
+<div class="grid">
+  <section class="card c8">
+    <div class="card-h"><h3>Fleet</h3><span class="sub">online = heartbeat in the last 90 s</span></div>
+    <div class="card-b flush">
+      {% if sensors %}
+      <table class="table"><thead><tr><th>Status</th><th>Sensor</th><th>Agent</th><th>Last heartbeat</th><th style="text-align:right">Processes</th>
+        <th style="text-align:right">Connections</th><th style="text-align:right">Uploads</th><th style="text-align:right">Flagged</th><th style="text-align:right">Open alerts</th></tr></thead><tbody>
+      {% for s in sensors %}{% set t = s.stats.totals or {} %}{% set g = s.stats.gauges or {} %}
+        <tr data-href="{{ url_for('sensor', sid=s.sensor_id) }}">
+          <td><span class="pill {{ 'good' if s.online else 'neutral' }}">{{ 'Online' if s.online else 'Offline' }}</span></td>
+          <td><b>{{ s.sensor_id }}</b><br><span class="muted small">{{ s.hostname }}</span></td><td class="small">{{ s.agent_version }}</td>
+          <td class="small" title="{{ s.last_heartbeat }}">{{ ago(s.last_heartbeat) }}</td>
+          <td class="tnum" style="text-align:right">{{ '{:,}'.format(t.processes_observed or 0) }}</td><td class="tnum" style="text-align:right">{{ '{:,}'.format(t.connections_observed or 0) }}</td>
+          <td class="tnum" style="text-align:right">{{ t.uploads_sent or 0 }}</td><td class="tnum red" style="text-align:right">{{ t.verdict_malicious or 0 }}</td>
+          <td class="tnum" style="text-align:right">{{ g.alerts_open or 0 }}</td></tr>
+      {% endfor %}</tbody></table>
+      {% else %}{{ empty('sensor', 'No sensor has connected yet. Use the steps on the right.') }}{% endif %}
+    </div>
+  </section>
+  <section class="card c4">
+    <div class="card-h"><h3>Connect a sensor</h3></div>
+    <div class="card-b">
+      <ol class="steps">
+        <li><span>Start <b>edr.setup.bat</b> on the machine to monitor. It opens <code>http://127.0.0.1:8001/settings</code>.</span></li>
+        <li><span>Dashboard URL<div class="keybox" style="margin-top:6px"><code>{{ base }}</code></div></span></li>
+        <li><span>API key<div class="keybox" style="margin-top:6px"><code id="api-key" data-secret="{{ api_key }}">••••••••••••••••••••••••</code>
+          <button class="btn sm ghost" data-reveal="api-key">{{ icon('eye', 'sm') }}</button><button class="btn sm ghost" data-copy-from="api-key">{{ icon('copy', 'sm') }}</button></div></span></li>
+        <li><span>Press <b>Test connection</b>, then <b>Save</b>. The sensor appears here within 30 s.</span></li>
+      </ol>
+      <form method="post" style="margin-top:16px" onsubmit="return confirm('Rotate the API key? Connected sensors stop uploading until you paste the new key.')">
+        <input type="hidden" name="action" value="rotate"><button class="btn sm danger">{{ icon('refresh', 'sm') }}Rotate API key</button></form>
+    </div>
+  </section>
+</div>
+{% endblock %}

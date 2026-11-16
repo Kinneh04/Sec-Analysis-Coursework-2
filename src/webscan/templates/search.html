@@ -1,15 +1,13 @@
-{% extends "base_public.html" %}
-{% from "_macros.html" import pill %}
-{% block title %}Search · SA2 Scan{% endblock %}
+{% extends "base.html" %}
+{% from "_filelist.html" import filetable %}
+{% block title %}Search{% endblock %}
+{% block crumbs %}<div class="crumbs">Search</div>{% endblock %}
+{% block heading %}Results for “{{ q }}”{% endblock %}
 {% block body %}
-<section class="page">
-  <h1>Results for “{{ q }}”</h1>
-  {% if rows %}
-  <table class="tbl"><thead><tr><th>Name</th><th>SHA-256</th><th>Verdict</th><th>pe_v3</th><th>Last seen</th></tr></thead><tbody>
-  {% for f in rows %}
-    <tr><td>{{ f.name }}</td><td><a class="mono" href="{{ url_for('report', sha=f.sha256) }}">{{ f.sha256 }}</a></td>
-      <td>{{ pill(f.verdict or f.status) }}</td><td class="mono">{{ '%.4f' % f.probability if f.probability is not none else '–' }}</td><td>{{ f.last_seen }}</td></tr>
-  {% endfor %}</tbody></table>
-  {% else %}<p class="muted">No file matches. Hash lookups need the full SHA-256, SHA-1 or MD5; upload the file to analyse it.</p>{% endif %}
+<section class="card">
+  <div class="card-h"><h3>{{ rows | length }} match{{ 'es' if rows | length != 1 }}</h3>
+    <span class="sub">hash lookups need the full SHA-256, SHA-1 or MD5; names match partially</span>
+    <div class="actions"><a class="btn sm primary" href="{{ url_for('analyze') }}">Analyze a new file</a></div></div>
+  <div class="card-b flush">{{ filetable(rows) }}</div>
 </section>
 {% endblock %}

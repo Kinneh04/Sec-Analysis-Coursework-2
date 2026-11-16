@@ -1,0 +1,76 @@
+{% extends "base.html" %}
+{% from "_ui.html" import icon %}
+{% block title %}Signals & glossary{% endblock %}
+{% block heading %}Signals &amp; glossary{% endblock %}
+{% block body %}
+<div class="stack">
+  <section class="card">
+    <div class="card-h"><h3>How a verdict is built</h3></div>
+    <div class="card-b"><ol class="steps">
+      <li><span><b>Model score.</b> pe_v3 turns 2,105 static measurements of the file into a score from 0 to 1. At or above <b>{{ '%.4f' % thr }}</b> the file is <b>Malicious</b>;
+        0.5 up to the threshold is <b>Borderline</b> (shown, not flagged); below 0.5 is <b>Benign</b>.</span></li>
+      <li><span><b>Reasons.</b> Each measurement's contribution (SHAP) is translated into a sentence and compared with typical benign and malware values from training.
+        Contributions are grouped into the factor groups below to give the <b>Score breakdown</b>.</span></li>
+      <li><span><b>Context signals.</b> Facts the model does not weigh directly (signature, installer format, API capabilities, structure). Each says what it means and how often it is harmless.</span></li>
+      <li><span><b>Assessment.</b> A heuristic note that correlates the reasons with the signals, e.g. "flagged, but every strong reason is explained by the NSIS installer format and the file is validly signed".
+        It never changes the model verdict; the analyst records the final decision.</span></li>
+    </ol></div>
+  </section>
+
+  <section class="card" id="reasons">
+    <div class="card-h"><h3>Terms</h3></div>
+    <div class="card-b"><dl class="gloss">{% for k, v in extra.items() %}<dt>{{ k }}</dt><dd>{{ v }}</dd>{% endfor %}</dl></div>
+  </section>
+
+  <section class="card">
+    <div class="card-h"><h3>Factor groups (score breakdown)</h3></div>
+    <div class="card-b"><dl class="gloss">{% for k, (label, desc) in GROUPS.items() %}<dt>{{ label }}</dt><dd>{{ desc }}</dd>{% endfor %}</dl></div>
+  </section>
+
+  <section class="card">
+    <div class="card-h"><h3>Capability signals (from imported APIs)</h3><span class="sub">a capability is not intent; most also appear in legitimate software</span></div>
+    <div class="card-b flush"><table class="table"><thead><tr><th>Signal</th><th>Severity</th><th>What it means</th><th>APIs</th></tr></thead><tbody>
+      {% for gid, (sev, title, apis, meaning) in api_groups.items() %}
+        <tr><td><b>{{ title }}</b></td><td><span class="tag {{ sev }}">{{ sev }}</span></td><td class="small">{{ meaning }}</td>
+          <td class="mono small" style="max-width:260px">{{ apis | sort | join(', ') }}</td></tr>
+      {% endfor %}
+      <tr><td><b>Network capability</b></td><td><span class="tag info">info</span></td><td class="small">Links networking libraries (ws2_32, wininet, winhttp, urlmon...). Normal for most modern apps.</td><td></td></tr>
+      <tr><td><b>Cryptography capability</b></td><td><span class="tag info">info</span></td><td class="small">Uses Windows cryptography. Normal for HTTPS, licensing and updates; ransomware also relies on it.</td><td></td></tr>
+    </tbody></table></div>
+  </section>
+
+  <section class="card">
+    <div class="card-h"><h3>Format signals (installers, packers, runtimes)</h3></div>
+    <div class="card-b flush"><table class="table"><tbody>
+      {% for pid, title, det, meaning in packers %}<tr><td style="width:240px"><b>{{ title }}</b></td><td class="small">{{ meaning }}</td></tr>{% endfor %}
+      <tr><td><b>.NET assembly</b></td><td class="small">Managed .NET code; most logic is IL bytecode that native-PE features describe only coarsely.</td></tr>
+    </tbody></table></div>
+  </section>
+
+  <section class="card">
+    <div class="card-h"><h3>Structure, signature and origin signals</h3></div>
+    <div class="card-b flush"><table class="table"><thead><tr><th>Signal</th><th>Severity</th><th>What it means</th></tr></thead><tbody>
+      {% for title, sev, meaning in [
+        ('Validly signed by …', 'positive', "The publisher's code-signing certificate checks out and the file is unchanged since signing. Strong evidence of origin; stolen certificates exist. Catalog-signed Windows files are valid but carry no embedded signature."),
+        ('Signature present but HashMismatch / NotTrusted', 'high', 'A signature exists but does not verify: the file was altered after signing, or the certificate is untrusted.'),
+        ('Not digitally signed', 'info', 'No publisher signature. Many legitimate tools are unsigned; most commercial software is signed.'),
+        ('Writable and executable section', 'medium', 'Memory that can be both changed and run lets code rewrite itself, typical of packers and shellcode loaders.'),
+        ('Entry point is in compressed/encrypted data', 'medium', 'Execution starts in near-random bytes, so the real code is unpacked at run time: a classic packer sign.'),
+        ('Entry point outside all sections', 'medium', 'Unusual layout produced by some packers and hand-crafted files.'),
+        ('Very small import table', 'low / medium', 'Packed or loader-style programs import almost nothing and resolve APIs later. Medium when combined with high entropy.'),
+        ('Embedded executable header(s)', 'medium', 'Other executables stored uncompressed inside this one: droppers, bundles, setup programs.'),
+        ('High-entropy section(s)', 'low', 'Compressed or encrypted content. Normal for compressed resources; suspicious when it is the code section.'),
+        ('Large appended data block', 'low', 'Installers, self-extracting archives and droppers keep their payload after the last section. Static features cannot see inside.'),
+        ('TLS callbacks', 'low', 'Code that runs before the main entry point; used by protectors and anti-debug tricks, and by some runtimes.'),
+        ('Missing exploit mitigations', 'low', 'Built without ASLR/DEP: older toolchains and many installers; rare in modern Microsoft software.'),
+        ('Unrealistic compile timestamp', 'low', 'Zeroed, ancient or future build dates are often forged; reproducible builds also zero them.'),
+        ('No version information', 'info', 'No product, company or description metadata. Most commercial software includes it.'),
+        ('URLs in strings', 'info', 'Web addresses in the file: updates, licences, documentation or command-and-control. Certificate URLs are ignored.'),
+        ('Downloaded from the internet', 'info', 'Windows Mark-of-the-Web says the file came from the internet (reported by an EDR sensor).'),
+        ('Process talked to a public IP on an unusual port', 'medium', 'Reported by an EDR sensor. Reverse shells and C2 do this; so do games, P2P and some cloud tools.')] %}
+        <tr><td style="width:300px"><b>{{ title }}</b></td><td><span class="tag {{ sev.split(' ')[0] }}">{{ sev }}</span></td><td class="small">{{ meaning }}</td></tr>
+      {% endfor %}
+    </tbody></table></div>
+  </section>
+</div>
+{% endblock %}

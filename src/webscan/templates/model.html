@@ -1,0 +1,64 @@
+{% extends "base.html" %}
+{% from "_ui.html" import icon, kpi %}
+{% block title %}Model{% endblock %}
+{% block heading %}Model{% endblock %}
+{% block body %}
+{% set c = blind.candidate_pe_v3 if blind else none %}
+<div class="kpis">
+  {{ kpi('Decision threshold', '%.4f' % thrs.pe_v3.threshold, 'model', 'accent', 'deploy-calibrated · frozen was ' ~ ('%.4f' % thrs.pe_v3.frozen)) }}
+  {% if c %}
+  {{ kpi('Blind TPR', '%.1f%%' % (100 * c.fixed.tpr), 'check', 'green', '95% CI ' ~ ('%.1f' % (100 * c.fixed.tpr_ci95[0])) ~ '–' ~ ('%.1f' % (100 * c.fixed.tpr_ci95[1])) ~ '% · frozen threshold') }}
+  {{ kpi('Blind FPR', '%.2f%%' % (100 * c.fixed.fpr), 'alert', 'amber', c.fixed.fp ~ ' of ' ~ c.fixed.n_benign ~ ' benign files flagged') }}
+  {{ kpi('Blind ROC-AUC', '%.3f' % c.roc_auc, 'chart', 'blue', blind.n_blind ~ ' files, ' ~ blind.n_groups ~ ' groups') }}
+  {% endif %}
+  {{ kpi('Frozen bundle', 'OK' if models_ok else 'Changed', 'shield', 'green' if models_ok else 'red', 'model pickles vs freeze manifest') }}
+</div>
+<div class="grid">
+  <section class="card c7">
+    <div class="card-h"><h3>Engines</h3></div>
+    <div class="card-b flush"><table class="table"><thead><tr><th>Engine</th><th>Role</th><th>Threshold in use</th><th>Source</th><th>Frozen</th></tr></thead><tbody>
+      {% for name, t in thrs.items() %}
+        <tr><td><b>{{ name }}</b><br><span class="muted small">{{ '2,105 static PE features' if name == 'pe_v3' else '274 V1-equivalent features' }}</span></td>
+          <td>{{ 'Decides the verdict' if name == 'pe_v3' else 'Baseline (shown only)' }}</td>
+          <td class="mono">{{ '%.4f' % t.threshold }}</td><td>{{ t.source.replace('_', ' ') }}</td><td class="mono">{{ '%.4f' % t.frozen }}</td></tr>
+      {% endfor %}</tbody></table></div>
+    <div class="card-b"><p class="muted small" style="margin:0">Calibration: {{ cal.n_benign }} temporally later benign files, target FPR {{ cal.target_fpr }},
+      achieved FPR {{ cal.achieved_fpr_at_threshold }} (<code>artifacts/deploy/calibration_temporal_benign.json</code>).</p></div>
+  </section>
+  <section class="card c5">
+    <div class="card-h"><h3>Freeze verification</h3></div>
+    <div class="card-b">
+      {% if not bad %}<p class="green" style="margin:0"><b>PASS.</b> Every tracked model, manifest and source file matches the V3.2 freeze manifest.</p>
+      {% else %}
+        <p style="margin:0 0 8px" class="{{ 'green' if models_ok else 'red' }}"><b>Model pickles {{ 'match the freeze' if models_ok else 'DO NOT match the freeze' }}.</b></p>
+        <p class="muted small" style="margin:0 0 8px">{{ bad | length }} other tracked file(s) are missing or changed. On a fresh clone this is expected: research
+          manifests and feature tables are not in git. Changed code is usually a line-ending or post-freeze edit.</p>
+        <details><summary class="small">Show files</summary><ul class="small mono" style="margin:6px 0 0;padding-left:18px">{% for b in bad[:25] %}<li>{{ b }}</li>{% endfor %}</ul></details>
+      {% endif %}
+    </div>
+  </section>
+  {% if blind %}
+  <section class="card c12">
+    <div class="card-h"><h3>Preregistered blind evaluation</h3><span class="sub">run {{ blind.run_at[:10] }} · frozen thresholds · <code>artifacts/v3.2/blind/blind_results.json</code></span></div>
+    <div class="card-b flush"><table class="table"><thead><tr><th>Arm</th><th>Threshold</th><th>TPR</th><th>TPR 95% CI</th><th>FPR</th><th>FPR 95% CI</th><th>TP</th><th>FP</th><th>ROC-AUC</th></tr></thead><tbody>
+      {% for key, v in blind.items() if v is mapping and v.fixed is defined %}
+        <tr><td><b>{{ key }}</b></td><td class="mono">{{ '%.4f' % v.threshold }}</td><td>{{ '%.3f' % v.fixed.tpr }}</td>
+          <td>{{ '%.3f' % v.fixed.tpr_ci95[0] }}–{{ '%.3f' % v.fixed.tpr_ci95[1] }}</td><td>{{ '%.4f' % v.fixed.fpr }}</td>
+          <td>{{ '%.4f' % v.fixed.fpr_ci95[0] }}–{{ '%.4f' % v.fixed.fpr_ci95[1] }}</td><td>{{ v.fixed.tp }}/{{ v.fixed.n_malicious }}</td>
+          <td>{{ v.fixed.fp }}/{{ v.fixed.n_benign }}</td><td>{{ '%.4f' % v.roc_auc if v.roc_auc is defined else '–' }}</td></tr>
+      {% endfor %}</tbody></table></div>
+  </section>
+  {% endif %}
+  <section class="card c12">
+    <div class="card-h"><h3>Limitations to keep in mind</h3></div>
+    <div class="card-b"><ul style="margin:0;padding-left:18px;display:flex;flex-direction:column;gap:6px">
+      <li><b>Static features only.</b> The model sees structure, not behaviour. Compressed payloads (installers, packers) are opaque to it.</li>
+      <li><b>Format bias.</b> {% if ref.classes %}{{ ref.classes.nsis.malicious }} of {{ ref.classes.nsis.malicious + ref.classes.nsis.benign }} NSIS-like files in training were malware, so
+        benign NSIS installers and uninstallers are frequently flagged{% else %}Installer formats seen mostly as malware in training are often flagged{% endif %}. See <a href="{{ url_for('insights') }}">Insights</a>.</li>
+      <li><b>Small benign test set.</b> 158 benign blind files give only coarse FPR resolution (one false positive = 0.63%).</li>
+      <li><b>No signature input.</b> Authenticode validity is shown as context but is not a model feature.</li>
+      <li><b>Not deployed:</b> later EMBER2024 + Binary Ninja blends, because their gain did not replicate (V9).</li>
+    </ul></div>
+  </section>
+</div>
+{% endblock %}
