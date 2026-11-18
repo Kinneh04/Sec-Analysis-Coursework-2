@@ -1,0 +1,75 @@
+{
+  "frozen_at": "2026-11-06T03:25:13.810399+00:00",
+  "w": 0.3,
+  "weight_table": {
+    "0.0": {
+      "mean_extra_tp": 0.0,
+      "mean_extra_fp": 0.0
+    },
+    "0.05": {
+      "mean_extra_tp": 0.7,
+      "mean_extra_fp": -0.3
+    },
+    "0.1": {
+      "mean_extra_tp": 3.05,
+      "mean_extra_fp": -0.6
+    },
+    "0.2": {
+      "mean_extra_tp": 5.65,
+      "mean_extra_fp": -0.75
+    },
+    "0.3": {
+      "mean_extra_tp": 6.8,
+      "mean_extra_fp": -0.95
+    },
+    "0.5": {
+      "mean_extra_tp": 3.2,
+      "mean_extra_fp": -1.0
+    }
+  },
+  "thresholds": {
+    "candidate_blend": -0.919470078742035,
+    "R1": 0.31491410519549656,
+    "R2": 0.977867412597057
+  },
+  "train": {
+    "train_bn_rows": 1256,
+    "train_r1_flagged_benign_bn_rows": 9,
+    "train_blend_flagged_benign_bn_rows": 9
+  },
+  "r2_train_oof": {
+    "tpr": 0.9342663273960984,
+    "fpr": 0.009697661152310326,
+    "tp": 2203,
+    "fp": 34,
+    "n_malicious": 2358,
+    "n_benign": 3506,
+    "tpr_ci95": [
+      0.9235405774275047,
+      0.9435793852321419
+    ],
+    "fpr_ci95": [
+      0.006948069649032428,
+      0.013520546370562306
+    ],
+    "min_attainable_fpr": 0.0002852253280091272
+  },
+  "files": {
+    "docs/v8_preregistration.md": "a3f45601106a9b0601193884d77ebfc84f8e2e158ef78acb94c748a2e32961f1",
+    "artifacts/v8/manifests/new_split_assignments.parquet": "3808050a121216f26ad1acab47f37c4a3f9fb4d5e8811bf1297b3329ea771fbf",
+    "artifacts/v8/manifests/new_corpus_freeze.json": "047808c3f59523fcfb961debad8c74cb65efd13d778dc234e9fb11c8dd5f346e",
+    "artifacts/v8/manifests/bn_queue.csv": "9c18a3073455ad6b95ad12fc54dfcf8e986d438282aebb28b0a90b52c79b764b",
+    "artifacts/v8/models/candidate.pkl": "979cc635429d686de1cf95444d7f857a009996f6fd73947e017018b6bf2bae10",
+    "artifacts/v8/models/R2.pkl": "001c96e2074b719c6f16da4516d9906e0040c454415153416229a35d63ac21f9",
+    "artifacts/v8/models/R1.pkl": "5b945859182c457d7d84949dbd338b233ea778abc9eaeb3e60c13c4e5afb38a7",
+    "src/v8/__init__.py": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "src/v8/blend.py": "00e39ccca25ac5fc68a923c1c1c29045aa392d3ca7df83c5c35289985acaf894",
+    "src/v8/cohort.py": "ee7a744da70d401c9405df7a01ce47826931b51ca3c231ffa8221c2f85a551b9",
+    "src/v8/dev_v7.py": "6174a778ca78f40e79ef972292f859f3a27360296ae4b8eabbe3668c1f65bf33",
+    "src/v8/experiment.py": "b76e93040bba51a64f2b3faefba15c5eb6c8e6fc0e4a1e847af4c68e1295ea6b",
+    "src/v7/experiment.py": "20177d121402cc55e9edaa764a0c09221441abc56d512996bfc534f8c388b3b0",
+    "src/v6/bn_capabilities.py": "042ae3ba2c10b673cdd51d2420a846d1589f0029de4459f938c65f641ce74fed",
+    "src/v6/bn_hlil.py": "b472ca15e2739d669c3737eb154082c594c6d6f17e11b9f8c7bf0117fcdfdc04",
+    "src/v6/unpack.py": "83930afef1d0495abcd92a1d6a5208410c61e63b9c87110199d99ace07b15e6f"
+  }
+}

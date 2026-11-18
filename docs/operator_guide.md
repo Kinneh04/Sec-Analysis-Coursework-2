@@ -1,87 +1,67 @@
-# SA2 V3 Operator Guide
+# SA2 Scan operator guide (V8 deployment)
 
-Static PE scoring using the **frozen V3.2** candidate model (`pe_v3`). Files are parsed with pefile only; nothing is executed.
+Updated 2026-11-18 for the switch from the V3.2 model to the V8 blend. The V3.2 commands are at the end.
 
-## Quick start
+## What decides a verdict
+
+Two engines run on every file:
+
+- `ember2024`: the pretrained EMBER2024 PE model (Apache-2.0) on the EMBER v3 feature vector.
+- `v8_blend`: decides the verdict. When Binary Ninja features are available, it adds `0.3 · logit(BN model)` to EMBER2024's logit and compares the sum with `t_blend`. When they are not, it uses EMBER2024's own decision.
+
+The score shown is on one display scale with one threshold, 0.3149 (`thr_R1`). On fallback files it is EMBER2024's raw score. It is not a calibrated probability.
+
+Every report states its decision path: **V8 blend** or **EMBER2024 only**, with the reason (`bn_disabled`, `bn_busy`, `bn_unreachable`, `bn_too_large`, `bn_timeout`, `bn_error`, `bn_unusable`). `bn_busy` means another SA2 process was using Binary Ninja, or an earlier analysis in this process timed out and was still running; the file was not sent to Binary Ninja. When the two engines disagree, the report says so and which term moved the decision: the Binary Ninja term, the blend's fixed threshold offset (`logit(thr_R1) - t_blend`, +0.142 log-odds), or both together.
+
+## Start-up
+
+1. Run `dashboard.setup.bat`. The first run installs packages and downloads the EMBER2024 model (internet needed once). Later runs verify it and replace it if its hash is wrong. With `SA2_EMBER_DOWNLOAD=0` the script only verifies it and stops with a message if it is missing or wrong.
+2. Read the console banner: password, API key, threshold, and whether Binary Ninja will be used.
+3. If an earlier scan was interrupted while Binary Ninja's settings were changed, start-up restores them and says so (unless another SA2 process is using Binary Ninja at that moment; that process restores them itself).
+
+## Binary Ninja
+
+- Default (`SA2_BN_MODE_SWITCH=restart`): each scan that needs Binary Ninja closes and restarts it twice, then restores your settings. Save your work in Binary Ninja first. Expect minutes per file.
+- `SA2_BN_MODE_SWITCH=off`: Binary Ninja stays open in its current mode. The report records this as a deviation from the frozen method.
+- `SA2_BN=0`: no Binary Ninja; every verdict is EMBER2024 alone.
+- Only one process should use Binary Ninja at a time: one dashboard, or the command-line scorer, not both. A lock file (`sa2scan_bn.lock` in the temp folder, or `SA2_BN_LOCK`) enforces it. A second process does not wait: its files fall back to EMBER2024 with reason `bn_busy`. Press **Reanalyze** later to get the blend.
+- The Settings page shows the configuration in effect and whether the MCP endpoint answers.
+- This path has not been tested against a live Binary Ninja. Check the first few reports (pass statuses, time) before relying on it.
+
+## Triage
+
+- **Malicious:** at or above the threshold. Read the decision path and the reasons before acting.
+- **Borderline:** below the threshold but at or above EMBER2024's 5% training-FPR operating point. Not flagged; listed in the review queue. This band is a triage aid, not a measured operating point of the blend.
+- **Benign:** below the borderline band.
+- Record your decision on the report (confirmed, false positive, benign). It never changes the model verdict.
+
+## Known limits
+
+- The blend's gain over EMBER2024 is small: +1.20 percentage points TPR (95% CI +0.69 to +1.69) on V10 at the frozen threshold. V9 did not confirm it; V10 did.
+- At the strictest operating point the blend did worse than EMBER2024 (V10, 0.25% training FPR: 16 detections gained, 43 lost).
+- On the course Sample1/Sample2 files the blend flagged 1 of 7; EMBER2024 alone flagged 2 of 7.
+- Static analysis only. Packed or compressed payloads may be missed. Use verdicts for triage, not as ground truth.
+
+## Old reports
+
+Reports made with the V3.2 model are re-scanned automatically at start-up. Until then they are marked as old V3.2 reports and their scores are not compared with the new threshold. **Settings → Re-analyse all files** forces a re-scan.
+
+## Command line
 
 ```powershell
-cd <path-to-your-clone>   # e.g. cd Sec-Analysis-Coursework-2
-.\.venv\Scripts\python.exe -m src.v3.score C:\path\to\sample.exe
+.\.venv\Scripts\python.exe -m src.v8.deploy --download-model                       # fetch if missing, replace if wrong hash
+.\.venv\Scripts\python.exe -m src.v8.deploy C:\path\file.exe                        # uses Binary Ninja if reachable
+.\.venv\Scripts\python.exe -m src.v8.deploy --recursive C:\dir --no-bn --summary    # EMBER2024 fallback only
+.\.venv\Scripts\python.exe -m src.v8.deploy --recursive C:\dir --output scores.jsonl
 ```
 
-Recursive directory scan:
+## Legacy V3.2 commands (research record)
+
+The V3.2 bundle (`artifacts/v3.2/`, `artifacts/deploy/`) no longer drives verdicts but still works:
 
 ```powershell
-.\.venv\Scripts\python.exe -m src.v3.score --recursive C:\Suspicious\Folder
-```
-
-JSON lines output:
-
-```powershell
-.\.venv\Scripts\python.exe -m src.v3.score --recursive C:\Suspicious --output artifacts\scores.jsonl --summary
-```
-
-## Output fields
-
-| Field | Meaning |
-|------|------|
-| `pe_v3_probability` | Candidate model score (0–1) |
-| `pe_v3_threshold` | Frozen train-calibrated threshold (0.894 for V3.2) |
-| `pe_v3_flagged` | `true` if probability ≥ threshold |
-| `pe_v1s_*` | V1-equivalent baseline (same LightGBM config, 274 features) |
-| `flagged` | Same as `pe_v3_flagged` (recommended arm) |
-
-## Verify model integrity
-
-```powershell
+.\.venv\Scripts\python.exe -m src.v3.score --recursive C:\Suspicious\Folder --summary
 .\.venv\Scripts\python.exe -m src.v3.freeze --verify --cohort-tag v3.2
 ```
 
-## Blind review export (false positives / false negatives)
-
-```powershell
-.\.venv\Scripts\python.exe -m src.v3.export_review --cohort-tag v3.2
-```
-
-Writes `artifacts/v3.2/blind/analyst_review.csv`.
-
-## Temporal generalization check (2026+ MalwareBazaar, frozen model)
-
-```powershell
-.\.venv\Scripts\python.exe -m src.v3.temporal_eval --model-tag v3.2 --min-date 2026-01-01
-```
-
-Results: `artifacts/v3.3/temporal_eval/temporal_eval.json`. This does **not** retrain; it measures whether V3.2 thresholds transfer to newer malware batches.
-
-## Evidence summary
-
-| Evaluation | Result |
-|------|------|
-| V3.2 preregistered blind | TPR **73.8%** vs baseline **59.7%** at **0.63% FPR** (158 benign); rule **passed** — see `docs/v3.2_results.md` |
-| V3 / V3.1 | Did not meet the same rule |
-
-## Deployment calibration (benign gold set)
-
-If your environment’s benign files differ from training (expected), estimate a new threshold **without retraining**:
-
-```powershell
-.\.venv\Scripts\python.exe -m src.v3.calibrate_deploy --benign-dir D:\GoldImages\CleanPE --recursive --target-fpr 0.01 --output artifacts\deploy\calibration.json
-```
-
-Use `recommended_threshold` when interpreting `pe_v3_probability` (compare manually or patch into a wrapper). The frozen pickle threshold remains unchanged for audit reproducibility.
-
-## Recalibration warning
-
-The V3.2 blind evaluation used 158 benign files (0.63% FPR). A 2026 temporal holdout with 246 unique benign files gave 1.63% FPR (4 false positives, all SPICE Guest Tools `WdfCoInstaller` DLLs) and 91.1% TPR on 2026 malware (`docs/temporal_eval_2026.md`). Before production use, set the threshold on benign data that matches your deployment environment:
-
-```powershell
-# Development-only: replay threshold search on an expanded pool (see src/v3/tune.py)
-.\.venv\Scripts\python.exe -m src.v3.tune --cohort-tag v3.2
-```
-
-## Limits
-
-- Trained on MalwareBazaar + local Windows/vendor PE inventory; not a global ground truth.
-- Shortcuts, non-PE files, and packed samples may score incorrectly.
-- Do not treat `flagged` as definitive malware; use as triage prior to sandbox or vendor verdict.
-- Optional integrity check (fails after `src/v3/` code changes): add `--verify-freeze`.
+Its evidence is in `docs/v3.2_results.md` and `docs/temporal_eval_2026.md`.

@@ -17,5 +17,10 @@ echo [setup] Creating .venv with %PY% ...
 
 :install
 echo [setup] Checking Python packages (requirements.txt) ...
-".venv\Scripts\python.exe" -m pip install --disable-pip-version-check -q -r requirements.txt || exit /b 1
+".venv\Scripts\python.exe" -m pip install --disable-pip-version-check -q -r requirements.txt
+if errorlevel 1 (
+  echo [setup] pip install failed. The first install needs internet access to pypi.org and github.com ^(thrember is installed
+  echo         from a GitHub zip^). Check the proxy or firewall, then re-run.
+  exit /b 1
+)
 exit /b 0

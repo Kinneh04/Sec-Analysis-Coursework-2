@@ -19,5 +19,30 @@ artifacts/v3.2/*
 artifacts/v3.2/blind/*
 !artifacts/v3.2/blind/blind_results.json
 !artifacts/deploy/
+# ... and the frozen V8 blend the dashboard now uses, plus its evidence (~1 MB). The EMBER2024 model is downloaded
+# on first run (python -m src.v8.deploy --download-model) into artifacts/ember2024/, which stays ignored.
+!artifacts/v8/
+artifacts/v8/*
+!artifacts/v8/models/
+artifacts/v8/models/*
+!artifacts/v8/models/candidate.pkl
+!artifacts/v8/models/R1.pkl
+!artifacts/v8/freeze/
+artifacts/v8/freeze/*
+!artifacts/v8/freeze/freeze_manifest.json
+!artifacts/v8/blind/
+artifacts/v8/blind/*
+!artifacts/v8/blind/blind_results.json
+!artifacts/v8/feature_reference.json
+!artifacts/v9/
+artifacts/v9/*
+!artifacts/v9/blind/
+artifacts/v9/blind/*
+!artifacts/v9/blind/replication_results.json
+!artifacts/v10/
+artifacts/v10/*
+!artifacts/v10/blind/
+artifacts/v10/blind/*
+!artifacts/v10/blind/replication_results.json
 # Runtime data (quarantined uploads, scan.db / edr.db with the admin password and API key) is never committed:
 # artifacts/dashboard/ and artifacts/edr/ stay ignored by artifacts/* above.

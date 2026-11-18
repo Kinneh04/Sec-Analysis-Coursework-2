@@ -19,13 +19,36 @@
         <dt>Data folder</dt><dd class="mono small">{{ data_dir }}</dd><dt>Bind address</dt><dd class="mono">{{ base }}</dd></dl>
       <form method="post" style="margin-top:14px" onsubmit="return confirm('Re-analyse every stored file with the current model and explanation code?')">
         <input type="hidden" name="action" value="rescan"><button class="btn sm">{{ icon('refresh', 'sm') }}Re-analyse all files</button>
-        <span class="muted small">Refreshes explanations after an update; verdicts only change if the model files change.</span></form>
+        <span class="muted small">Refreshes explanations after an update. Verdicts can change if the model files or Binary Ninja availability changed.</span></form>
+    </div>
+  </section>
+  <section class="card c12">
+    <div class="card-h"><h3>Binary Ninja at scan time</h3><span class="sub">read-only · set by environment variables before starting the dashboard</span></div>
+    <div class="card-b">
+      <dl class="kv">
+        <dt>Enabled</dt><dd>{% if bn.enabled %}Yes{% else %}No (<code>SA2_BN=0</code>): every verdict is EMBER2024 alone{% endif %}</dd>
+        <dt>MCP endpoint</dt><dd class="mono">{{ bn.url }}</dd>
+        <dt>Answering now</dt><dd>{% if not bn.enabled %}–{% elif bn.reachable %}<span class="green">Yes</span>{% else %}<span class="amber">No</span>: scans use the EMBER2024-only fallback{% if bn.probe_error %} ({{ bn.probe_error }}){% endif %}{% endif %}</dd>
+        <dt>Mode switching</dt><dd><code>SA2_BN_MODE_SWITCH={{ bn.mode_switch }}</code>{% if bn.mode_switch == 'restart' and not bn.windows %} <span class="muted">(only applies on Windows)</span>{% endif %}</dd>
+        <dt>Binary Ninja exe</dt><dd class="mono small">{{ bn.bn_exe or 'default per-user install path' }}</dd>
+        <dt>UPX</dt><dd class="mono small">{{ bn.upx or 'tools/upx, then PATH' }}</dd>
+      </dl>
+      {% if bn.enabled and bn.mode_switch == 'restart' %}
+      <div class="vt-banner warn" style="margin-top:14px"><span class="ic">{{ icon('alert', 'lg') }}</span><div><h3>Each scan restarts Binary Ninja</h3>
+        <p>For every file that needs Binary Ninja features, SA2 Scan force-closes <code>binaryninja.exe</code>, rewrites <code>%APPDATA%\Binary Ninja\settings.json</code>
+          (backup <code>settings.json.sa2scan_backup</code>), relaunches it in intermediate analysis mode, then in full mode, then restores your settings and relaunches it.
+          This closes any open Binary Ninja session and takes minutes per file. It matches how the research enforced analysis modes.</p>
+        <div class="note">Set <code>SA2_BN_MODE_SWITCH=off</code> to use Binary Ninja's current mode (a deviation from the frozen method, recorded in each report), or <code>SA2_BN=0</code> to disable it.
+          This path has not been tested against a live Binary Ninja.</div></div></div>
+      {% elif bn.enabled %}
+      <p class="muted small" style="margin:12px 0 0">Mode switching is off: Binary Ninja is used in whatever analysis mode it is in. Reports record this as a deviation from the frozen method. This path has not been tested against a live Binary Ninja.</p>
+      {% endif %}
     </div>
   </section>
   <section class="card c12">
     <div class="card-h"><h3>API reference</h3><span class="sub">header <code>X-API-Key</code> on every call; wrong or missing key → 401</span></div>
     <div class="card-b flush"><table class="table"><thead><tr><th>Method</th><th>Path</th><th>Purpose</th></tr></thead><tbody>
-      <tr><td><span class="tag">GET</span></td><td class="mono">/api/v1/ping</td><td>Connection test: server name, model tag, thresholds.</td></tr>
+      <tr><td><span class="tag">GET</span></td><td class="mono">/api/v1/ping</td><td>Connection test: server name, model tag (<code>v8</code>), deciding engine, thresholds.</td></tr>
       <tr><td><span class="tag">GET</span></td><td class="mono">/api/v1/files/&lt;sha256&gt;</td><td>Full report JSON (200) or 404. Poll until <code>status</code> is <code>done</code> or <code>error</code>. Includes <code>assessment</code>, <code>explanation</code> and <code>all_signals</code>.</td></tr>
       <tr><td><span class="tag">POST</span></td><td class="mono">/api/v1/files</td><td>Multipart <code>file</code> + optional <code>meta</code> (JSON string). 202 <code>{sha256, status}</code>; 415 not a PE; 413 over 50 MB.</td></tr>
       <tr><td><span class="tag">POST</span></td><td class="mono">/api/v1/sensors/heartbeat</td><td>JSON <code>{sensor_id, hostname, agent_version, stats}</code>, sent by SA2 Sentinel every 30 s.</td></tr>

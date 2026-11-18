@@ -5,6 +5,7 @@
 {% set pe = r.pe or {} %}{% set sig = pe.signature if pe.signature is mapping else {} %}{% set vi = pe.version_info or {} %}
 {% set exp = r.explanation or {} %}{% set a = r.assessment %}
 {% set outcome = 'pending' if r.status in ('queued', 'scanning') else ('error' if r.status == 'error' else ('malicious' if r.verdict == 'malicious' else ('borderline' if r.risk == 'elevated' else 'benign'))) %}
+{% set fb = r.view and r.view.blend and r.view.blend.coverage == 'uncovered' %}
 {% set sig_ids = (r.all_signals or []) | map(attribute='id') | list %}
 <div class="stack" data-sha="{{ r.sha256 }}" data-status="{{ r.status }}" {% if print_mode %}data-print="1"{% endif %} id="report">
 
@@ -13,14 +14,14 @@
       <div>
         {{ ring(r.flag_count or 0, r.engine_count or 2, outcome) }}
         <div class="ring-cap">engines flagged</div>
-        <div class="ring-score {{ 'red' if outcome == 'malicious' else ('amber' if outcome == 'borderline' else 'green') }}" title="pe_v3 score (threshold {{ '%.4f' % thr }})">
+        <div class="ring-score {{ 'red' if outcome == 'malicious' else ('amber' if outcome == 'borderline' else 'green') }}" title="{{ 'old V3.2 score' if r.view and r.view.legacy else 'score, display scale' }} (threshold {{ '%.4f' % thr }})">
           {{ '%.4f' % r.probability if r.probability is not none else '–' }}</div>
       </div>
       <div style="min-width:0">
         <div class="vt-verdict {{ outcome }}">
           {% if outcome == 'pending' %}{{ icon('clock') }} Analysis in progress…
-          {% elif outcome == 'error' %}{{ icon('alert') }} The file could not be scored
-          {% elif outcome == 'malicious' %}{{ icon('alert') }} {{ r.flag_count }} / {{ r.engine_count }} engines flagged this file as malicious
+          {% elif outcome == 'error' %}{{ icon('alert') }} The file could not be scored{% if r.error %} <span class="muted small">({{ r.error }})</span>{% endif %}
+          {% elif outcome == 'malicious' %}{{ icon('alert') }} {{ r.flag_count }} / {{ r.engine_count }} engines flagged this file as malicious{% if fb %} <span class="muted small">(EMBER2024 only)</span>{% endif %}
           {% elif outcome == 'borderline' %}{{ icon('eye') }} No engine flagged this file, but the score is borderline
           {% else %}{{ icon('check') }} No engine flagged this file{% endif %}
           <span style="margin-left:6px">{{ disp_pill(r.disposition) }}</span>
@@ -66,7 +67,7 @@
   </section>
 
   {% if outcome == 'pending' %}
-  <section class="card"><div class="empty">{{ icon('clock') }}<div>This page refreshes automatically when the scan finishes (usually 1–2 s).</div></div></section>
+  <section class="card"><div class="empty">{{ icon('clock') }}<div>This page refreshes automatically when the scan finishes: a few seconds, or several minutes when Binary Ninja runs.</div></div></section>
   {% else %}
 
   {% if a %}
@@ -105,15 +106,52 @@
       </div>
       {% endif %}
 
+      {% set v = r.view or {} %}{% set dp = r.decision_path if r.decision_path is mapping else {} %}{% set bn = r.bn if r.bn is mapping else {} %}
+      {% set b = v.blend if v.blend is mapping else {} %}
+      {% if v.legacy %}
+      <div class="vt-banner warn"><span class="ic">{{ icon('info', 'lg') }}</span><div><h3>Old report from the V3.2 model</h3>
+        <p>This report was produced before the switch to the V8 blend. Its score is on a different scale and is not compared with the current threshold. Press <b>Reanalyze</b> to score it with the current model.</p></div></div>
+      {% elif b %}
       <div>
-        <div class="section-t">Engines <span class="sub">frozen V3.2 LightGBM bundle · verdict decided by pe_v3</span></div>
+        <div class="section-t">Decision path <span class="sub">which model produced the verdict</span></div>
+        <div class="card"><div class="card-b">
+          <dl class="kv">
+            <dt>Path</dt><dd>{% if b.coverage == 'covered' %}<span class="pill good">V8 blend</span> EMBER2024 + Binary Ninja model
+              {% else %}<span class="pill warn">EMBER2024 only</span> fallback: {{ REASONS.get(dp.reason or b.fallback_reason, dp.reason or b.fallback_reason or 'unknown') }}{% endif %}</dd>
+            {% if dp.note %}<dt>Note</dt><dd>{{ dp.note }}</dd>{% endif %}
+            <dt>EMBER2024 score</dt><dd class="mono">{{ '%.4f' % b.r1_score if b.r1_score is number else '–' }}</dd>
+            <dt>Binary Ninja model</dt><dd class="mono">{{ '%.4f' % b.bn_score if b.bn_score is number else 'not used' }}</dd>
+            <dt>Blend margin</dt><dd class="mono">{{ '%+.4f' % b.blend_margin if b.blend_margin is number else '–' }}
+              <span class="muted">(malicious when &ge; 0{% if b.coverage == 'covered' and b.w is number and b.t_blend is number %}; w = {{ b.w }}, t_blend = {{ '%.4f' % b.t_blend }}{% endif %})</span></dd>
+            <dt>Display score</dt><dd class="mono">{{ '%.4f' % b.probability if b.probability is number else '–' }} <span class="muted">vs threshold {{ '%.4f' % b.threshold if b.threshold is number else '–' }}</span></dd>
+            {% if bn %}<dt>Binary Ninja passes</dt><dd>cap6 <span class="tag">{{ bn.cap6_status or '–' }}</span> hl6 <span class="tag">{{ bn.hl6_status or '–' }}</span>
+              {% if bn.seconds is number %} · {{ '%.1f' % bn.seconds }} s{% endif %}{% if bn.cached %} · cached{% endif %}
+              {% if bn.prep %} · prep {{ bn.prep | join(', ') }}{% endif %}
+              {% if b.coverage == 'covered' and not bn.mode_enforced and not bn.cached %}<div class="small amber">Analysis mode not enforced (SA2_BN_MODE_SWITCH=off): deviates from the frozen method.</div>{% endif %}</dd>{% endif %}
+            {% if r.timings_ms is mapping %}<dt>Time</dt><dd class="small">EMBER features {{ r.timings_ms.ember }} ms · Binary Ninja {{ r.timings_ms.bn }} ms · scoring {{ r.timings_ms.score }} ms</dd>{% endif %}
+          </dl>
+          <p class="muted small" style="margin:10px 0 0">{{ b.scale_note or '' }}</p>
+        </div></div>
+      </div>
+      {% if v.disagree %}
+      <div class="vt-banner warn"><span class="ic">{{ icon('eye', 'lg') }}</span><div><h3>The engines disagree</h3>
+        <p>The V8 blend says <b>{{ 'malicious' if b.flagged else 'not malicious' }}</b>; EMBER2024 alone says <b>{{ 'malicious' if v.r1.flagged else 'not malicious' }}</b>.
+          {% set dis = a.disagreement if a and a.disagreement else none %}{% if dis %}{{ dis.text }}{% endif %}
+          The blend decides the verdict; review the file with both in mind.</p></div></div>
+      {% endif %}
+      {% endif %}
+
+      <div>
+        <div class="section-t">Engines <span class="sub">{% if v.legacy %}V3.2 engines (old report){% else %}verdict decided by the V8 blend{% if b and b.coverage != 'covered' %} · both engines are EMBER2024 on this file{% endif %}{% endif %}</span></div>
         <div class="engines">
           {% for e in r.engines or [] %}
           <div class="eng">
-            <div class="name">{{ e.name }}<small>{{ 'decides the verdict · 2,105 features' if e.recommended else 'baseline · 274 features' }}</small></div>
+            <div class="name">{{ ENGINE_LABELS.get(e.name, e.name) }}<small>{% if e.name == ENGINE_BLEND %}decides the verdict · {{ 'EMBER2024 + Binary Ninja' if e.coverage == 'covered' else 'EMBER2024 fallback' }}
+              {% elif e.name == ENGINE_R1 %}pretrained EMBER2024 alone · comparison{% else %}{{ 'decided the verdict' if e.recommended else 'baseline' }} · {{ e.model_tag }}{% endif %}</small></div>
             <div class="res {{ 'flag' if e.flagged else 'ok' }}">{{ icon('alert' if e.flagged else 'check', 'sm') }}{{ 'Malicious' if e.flagged else 'Undetected' }}</div>
-            {{ meter(e.probability, 'high' if e.flagged else ('elevated' if e.probability >= 0.5 else 'low')) }}
-            <div class="muted small" style="grid-column:1/-1">threshold {{ '%.4f' % e.threshold }} ({{ e.threshold_source.replace('_', ' ') }}{% if e.threshold_source != 'frozen' %}; frozen {{ '%.4f' % e.frozen_threshold }}{% endif %})</div>
+            {% if v.legacy %}<div class="muted small" style="grid-column:1/-1">score {{ '%.4f' % e.probability if e.probability is number else '–' }} (old scale)</div>
+            {% else %}{{ meter(e.probability, 'high' if e.flagged else ('elevated' if (e.probability or 0) >= border else 'low')) }}{% endif %}
+            <div class="muted small" style="grid-column:1/-1">threshold {{ '%.4f' % e.threshold if e.threshold is number else '–' }} ({{ (e.threshold_source or '').replace('_', ' ') }}{% if e.threshold_source and e.threshold_source != 'frozen' and e.frozen_threshold is number %}; frozen {{ '%.4f' % e.frozen_threshold }}{% endif %}){% if e.name == ENGINE_BLEND %} · display scale{% endif %}</div>
           </div>
           {% else %}<div class="eng">{{ r.error or 'Not scored.' }}</div>{% endfor %}
         </div>
@@ -136,23 +174,23 @@
   <div id="t-reasoning" class="tabpane">
     <div class="stack">
       <div class="card">
-        <div class="card-h"><h3>Score breakdown</h3><span class="sub">how each factor group moved the pe_v3 score (SHAP, log-odds)</span></div>
+        <div class="card-h"><h3>Score breakdown</h3><span class="sub">how each factor group moved the verdict score (SHAP, log-odds on the display scale)</span></div>
         <div class="card-b">
           {% if exp.groups %}
           {% set mx = exp.groups | map(attribute='contribution') | map('abs') | max %}
           <div class="waterfall">
             <div class="wf"><div class="name">Average file<small>starting point before looking at this file</small></div><div></div>
-              <div class="v">{{ '%.3f' % exp.base_probability }}</div></div>
-            {% for g in exp.groups if (g.contribution | abs) >= 0.005 %}{% set w = 50 * (g.contribution | abs) / mx %}
-            <div class="wf" title="{{ GROUPS[g.group][1] }}">
-              <div class="name">{{ g.label }}<small>{{ GROUPS[g.group][1] | truncate(64) }}</small></div>
+              <div class="v">{{ '%.3f' % exp.base_probability if exp.base_probability is number else '–' }}</div></div>
+            {% for g in exp.groups if (g.contribution | abs) >= 0.005 %}{% set w = 50 * (g.contribution | abs) / (mx or 1) %}{% set gdesc = (GROUPS.get(g.group) or (g.label, ''))[1] %}
+            <div class="wf" title="{{ gdesc }}">
+              <div class="name">{{ g.label }}<small>{{ gdesc | truncate(64) }}</small></div>
               <div class="axis0"><span class="{{ 'pos' if g.contribution > 0 else 'neg' }}" style="{{ 'left:50%' if g.contribution > 0 else 'right:50%' }};width:{{ w }}%"></span></div>
               <div class="v {{ 'red' if g.contribution > 0 else 'green' }}">{{ '%+.2f' % g.contribution }}</div>
             </div>
             {% endfor %}
-            <div class="wf total"><div class="name">This file<small>final pe_v3 score vs threshold {{ '%.4f' % thr }}</small></div>
+            <div class="wf total"><div class="name">This file<small>final score vs threshold {{ '%.4f' % thr }}</small></div>
               <div class="meter" style="min-width:0">{{ meter(exp.final_probability, r.risk) }}</div>
-              <div class="v {{ 'red' if r.verdict == 'malicious' else 'green' }}">{{ '%.4f' % exp.final_probability }}</div></div>
+              <div class="v {{ 'red' if r.verdict == 'malicious' else 'green' }}">{{ '%.4f' % exp.final_probability if exp.final_probability is number else '–' }}</div></div>
           </div>
           {% else %}{{ empty('info', 'No model explanation for this file.') }}{% endif %}
         </div>
@@ -169,7 +207,7 @@
             <div>
               <div class="t">{{ x.title }}</div>
               <div class="d">This file: <b>{{ x.value }}</b>{% if x.typical %} · {{ x.typical }}{% endif %}.
-                {{ 'Pushes towards malicious' if x.contribution > 0 else 'Pulls towards benign' }} ({{ x.strength }}) · {{ GROUPS[x.group][0] }}.</div>
+                {{ 'Pushes towards malicious' if x.contribution > 0 else 'Pulls towards benign' }} ({{ x.strength }}){% if GROUPS.get(x.group) %} · {{ GROUPS[x.group][0] }}{% endif %}.</div>
               <div class="feat">{{ x.feature }}</div>
             </div>
             <div class="effect"><div class="track"><span class="{{ 'bg-red' if x.contribution > 0 else 'bg-green' }}"

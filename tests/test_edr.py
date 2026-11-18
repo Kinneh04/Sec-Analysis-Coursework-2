@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 import shutil
 import threading
 import time
@@ -16,7 +17,17 @@ from src.edr.core import Agent
 from src.webscan.app import create_app as create_dashboard
 
 ROOT = Path(__file__).resolve().parents[1]
-BENIGN = Path(r"C:\Windows\System32\notepad.exe")
+BENIGN = Path(os.environ.get("SA2_TEST_BENIGN_PE", r"C:\Windows\System32\notepad.exe"))
+
+
+def _dashboard_engine_ready() -> bool:
+    """The transport test runs the real V8 engine: needs thrember and the downloaded EMBER2024 model."""
+    try:
+        import thrember  # noqa: F401
+    except ImportError:
+        return False
+    from src.v8 import deploy
+    return (deploy.ROOT / deploy.EMBER_MODEL).is_file()
 
 
 def test_motw_and_rules(monkeypatch, tmp_path):
@@ -45,18 +56,24 @@ def test_console_csrf_and_pages(tmp_path):
     assert agent.cfg()["dashboard_url"] == "http://127.0.0.1:8000"
     with c.session_transaction(base_url="http://127.0.0.1:8001") as s:
         token = s["csrf"]
+    allow = BENIGN
+    if not allow.is_file():  # off Windows: any existing benign file works for the allowlist collector
+        allow = tmp_path / "benign_stub.exe"
+        allow.write_bytes(b"MZ" + b"\x00" * 62)
     form = {"csrf": token, "action": "save", "dashboard_url": "http://127.0.0.1:8000", "sensor_name": "t", "submit_mode": "allowlist",
-            "allowlist": str(BENIGN), "watchlist": "", "poll_seconds": "2", "max_mb": "50", "watch_dirs": str(tmp_path), "auto_submit": "on"}
+            "allowlist": str(allow), "watchlist": "", "poll_seconds": "2", "max_mb": "50", "watch_dirs": str(tmp_path), "auto_submit": "on"}
     assert c.post("/settings", data=form, base_url="http://127.0.0.1:8001").status_code == 302
     assert agent.cfg()["max_mb"] == "50"
     agent.collect_once()  # settings saved via the form must be usable by the collector (regression: int("50.0"))
     assert agent.db.val("SELECT state FROM binaries WHERE origin='allowlist'") == "pending"
 
 
-@pytest.mark.skipif(not BENIGN.is_file(), reason="needs Windows notepad.exe")
+@pytest.mark.skipif(not BENIGN.is_file(), reason="needs Windows notepad.exe (or SA2_TEST_BENIGN_PE)")
+@pytest.mark.skipif(not _dashboard_engine_ready(), reason="needs thrember and the downloaded EMBER2024 model")
 def test_allowlist_transport_to_dashboard(tmp_path, monkeypatch):
     monkeypatch.chdir(ROOT)
-    dash = create_dashboard(tmp_path / "dash")  # real V3.2 engine, background worker
+    monkeypatch.setenv("SA2_BN", "0")  # never restart a running Binary Ninja from the test suite
+    dash = create_dashboard(tmp_path / "dash")  # real V8 engine (EMBER2024 fallback path), background worker
     srv = make_server("127.0.0.1", 0, dash, threaded=True)
     threading.Thread(target=srv.serve_forever, daemon=True).start()
     try:

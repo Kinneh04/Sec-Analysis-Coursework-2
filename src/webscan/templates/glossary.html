@@ -7,11 +7,13 @@
   <section class="card">
     <div class="card-h"><h3>How a verdict is built</h3></div>
     <div class="card-b"><ol class="steps">
-      <li><span><b>Model score.</b> pe_v3 turns 2,105 static measurements of the file into a score from 0 to 1. At or above <b>{{ '%.4f' % thr }}</b> the file is <b>Malicious</b>;
-        0.5 up to the threshold is <b>Borderline</b> (shown, not flagged); below 0.5 is <b>Benign</b>.</span></li>
+      <li><span><b>Model score.</b> The pretrained EMBER2024 model scores 2,568 static measurements of the file. When Binary Ninja features are available, the V8 blend adds
+        a second model's view of the code; otherwise EMBER2024 decides alone. The score runs from 0 to 1 on one display scale (not a calibrated probability).
+        At or above <b>{{ '%.4f' % thr }}</b> the file is <b>Malicious</b>; {{ '%.4f' % border }} up to the threshold is <b>Borderline</b> (shown, not flagged); below {{ '%.4f' % border }} is <b>Benign</b>.
+        Each report says which path decided it.</span></li>
       <li><span><b>Reasons.</b> Each measurement's contribution (SHAP) is translated into a sentence and compared with typical benign and malware values from training.
         Contributions are grouped into the factor groups below to give the <b>Score breakdown</b>.</span></li>
-      <li><span><b>Context signals.</b> Facts the model does not weigh directly (signature, installer format, API capabilities, structure). Each says what it means and how often it is harmless.</span></li>
+      <li><span><b>Context signals.</b> Facts shown as context, not as model inputs in this form: signature validity and signer (EMBER2024 reads only the signature's structure), installer format, API capabilities, structure. Each says what it means and how often it is harmless.</span></li>
       <li><span><b>Assessment.</b> A heuristic note that correlates the reasons with the signals, e.g. "flagged, but every strong reason is explained by the NSIS installer format and the file is validly signed".
         It never changes the model verdict; the analyst records the final decision.</span></li>
     </ol></div>

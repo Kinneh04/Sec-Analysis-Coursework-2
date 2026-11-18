@@ -1,0 +1,190 @@
+{
+  "run_at": "2026-11-06T23:55:17.084222+00:00",
+  "w": 0.3,
+  "n": 724,
+  "n_benign": 281,
+  "n_malicious": 443,
+  "n_groups": 666,
+  "dropped_no_ember": 0,
+  "bn_coverage": {
+    "benign": 0.99644128113879,
+    "malicious": 0.927765237020316
+  },
+  "arms": {
+    "candidate": {
+      "threshold": 0.0,
+      "fixed": {
+        "tpr": 0.9187358916478555,
+        "fpr": 0.0,
+        "tp": 407,
+        "fp": 0,
+        "n_malicious": 443,
+        "n_benign": 281,
+        "tpr_ci95": [
+          0.8895462542500792,
+          0.9407255915225614
+        ],
+        "fpr_ci95": [
+          0.0,
+          0.013486794063788433
+        ],
+        "min_attainable_fpr": 0.0035587188612099642
+      },
+      "roc_auc": 0.997887261714451,
+      "pr_auc": 0.9987104143468695
+    },
+    "R2": {
+      "threshold": 0.977867412597057,
+      "fixed": {
+        "tpr": 0.8600451467268623,
+        "fpr": 0.0,
+        "tp": 381,
+        "fp": 0,
+        "n_malicious": 443,
+        "n_benign": 281,
+        "tpr_ci95": [
+          0.8246324468338111,
+          0.8892670647604539
+        ],
+        "fpr_ci95": [
+          0.0,
+          0.013486794063788433
+        ],
+        "min_attainable_fpr": 0.0035587188612099642
+      },
+      "roc_auc": 0.9995340729256204,
+      "pr_auc": 0.9997075045809176
+    },
+    "R1": {
+      "threshold": 0.31491410519549656,
+      "fixed": {
+        "tpr": 0.9051918735891648,
+        "fpr": 0.0,
+        "tp": 401,
+        "fp": 0,
+        "n_malicious": 443,
+        "n_benign": 281,
+        "tpr_ci95": [
+          0.8743232160406041,
+          0.929093475690873
+        ],
+        "fpr_ci95": [
+          0.0,
+          0.013486794063788433
+        ],
+        "min_attainable_fpr": 0.0035587188612099642
+      },
+      "roc_auc": 0.9950997324935935,
+      "pr_auc": 0.9970480224046575
+    }
+  },
+  "paired": {
+    "candidate_minus_R1": {
+      "delta_tpr_b_minus_a": 0.013544018058690745,
+      "delta_tpr_ci95": [
+        0.004444198078344419,
+        0.025883242281793922
+      ],
+      "delta_fpr_b_minus_a": 0.0,
+      "delta_fpr_ci95": [
+        0.0,
+        0.0
+      ],
+      "fraction_b_better_tpr": 0.997,
+      "n_groups": 666,
+      "n_boot": 2000,
+      "seed": 42
+    },
+    "candidate_minus_R2": {
+      "delta_tpr_b_minus_a": 0.05869074492099323,
+      "delta_tpr_ci95": [
+        0.02288329519450801,
+        0.09491028783308195
+      ],
+      "delta_fpr_b_minus_a": 0.0,
+      "delta_fpr_ci95": [
+        0.0,
+        0.0
+      ],
+      "fraction_b_better_tpr": 0.9985,
+      "n_groups": 666,
+      "n_boot": 2000,
+      "seed": 42
+    }
+  },
+  "secondary": {
+    "vs_R1_discordance": {
+      "gained_tp": 6,
+      "lost_tp": 0,
+      "added_fp": 0,
+      "removed_fp": 0
+    },
+    "bn_covered": {
+      "candidate": {
+        "tpr": 0.9221411192214112,
+        "fpr": 0.0,
+        "tp": 379,
+        "fp": 0,
+        "n_malicious": 411,
+        "n_benign": 280,
+        "tpr_ci95": [
+          0.8921522419636939,
+          0.9443116035137123
+        ],
+        "fpr_ci95": [
+          0.0,
+          0.013534309276723356
+        ],
+        "min_attainable_fpr": 0.0035714285714285713
+      },
+      "R2": {
+        "tpr": 0.8540145985401459,
+        "fpr": 0.0,
+        "tp": 351,
+        "fp": 0,
+        "n_malicious": 411,
+        "n_benign": 280,
+        "tpr_ci95": [
+          0.8166001474066873,
+          0.8848724146507341
+        ],
+        "fpr_ci95": [
+          0.0,
+          0.013534309276723356
+        ],
+        "min_attainable_fpr": 0.0035714285714285713
+      },
+      "R1": {
+        "tpr": 0.9075425790754258,
+        "fpr": 0.0,
+        "tp": 373,
+        "fp": 0,
+        "n_malicious": 411,
+        "n_benign": 280,
+        "tpr_ci95": [
+          0.8756389665992099,
+          0.9318981752881996
+        ],
+        "fpr_ci95": [
+          0.0,
+          0.013534309276723356
+        ],
+        "min_attainable_fpr": 0.0035714285714285713
+      }
+    }
+  },
+  "decision": {
+    "R1": {
+      "tpr_higher_ci_lower_gt_0": true,
+      "fpr_not_higher": true,
+      "beaten": true
+    },
+    "R2": {
+      "tpr_higher_ci_lower_gt_0": true,
+      "fpr_not_higher": true,
+      "beaten": true
+    },
+    "beats_ember2024": true
+  },
+  "sota_claim_supported": false
+}

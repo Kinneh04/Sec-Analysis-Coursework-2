@@ -1,4 +1,4 @@
-"""SA2 Scan: analyst console over the frozen V3.2 models (static analysis only).
+"""SA2 Scan: analyst console over the frozen V8 blend (EMBER2024 + Binary Ninja model; static analysis only).
 
   .venv\\Scripts\\python.exe -m src.webscan.app --port 8000
 """
@@ -17,6 +17,7 @@ import re
 import secrets
 import stat
 import statistics
+import sys
 import threading
 from collections import Counter, defaultdict
 from datetime import datetime, timedelta, timezone
@@ -32,7 +33,17 @@ from src.webscan import explain, scanner
 ROOT = Path(__file__).resolve().parents[2]
 MAX_BYTES = 50 * 1024 * 1024
 ONLINE_SECONDS = 90
-BORDERLINE = 0.5
+# Borderline band: below the threshold but at or above EMBER2024's 5% training-FPR operating point
+# (explain.reference()["r1_operating_points"]["fpr_0.05"]). Triage aid only, not a measured operating point of the blend.
+BORDERLINE_FALLBACK = 0.10
+REASONS = {"covered": "Binary Ninja features used (V8 blend)", "bn_disabled": "Binary Ninja disabled (SA2_BN=0)",
+           "bn_busy": "Binary Ninja busy (in use by another scan)", "bn_unreachable": "Binary Ninja not reachable", "bn_too_large": "File too large for Binary Ninja",
+           "bn_timeout": "Binary Ninja timed out", "bn_error": "Binary Ninja error", "bn_unusable": "Binary Ninja features unusable",
+           "legacy": "Old V3.2 report (re-scan pending)", "none": "Not scored"}
+ENGINE_LABELS = {scanner.ENGINE_BLEND: "V8 blend", scanner.ENGINE_R1: "EMBER2024"}
+EVIDENCE = (("V8 blind", Path("artifacts/v8/blind/blind_results.json")),
+            ("V9 replication", Path("artifacts/v9/blind/replication_results.json")),
+            ("V10 replication", Path("artifacts/v10/blind/replication_results.json")))
 DISPOSITIONS = {"": "Unreviewed", "confirmed": "Confirmed malicious", "false_positive": "False positive",
                 "benign_ok": "Benign (verified)", "investigating": "Investigating"}
 SCHEMA = """
@@ -78,15 +89,99 @@ class BadUpload(Exception):
 
 @lru_cache(maxsize=1)
 def freeze_status() -> dict[str, Any]:
-    from src.v3 import freeze
-    bad = freeze.verify(tag=scanner.MODEL_TAG)
-    return {"bad": bad, "models_ok": not any("/models/" in b.replace("\\", "/") for b in bad)}
+    try:
+        return scanner.freeze_status()
+    except Exception as e:  # missing or unreadable manifest
+        return {"bad": [f"artifacts/v8/freeze/freeze_manifest.json ({type(e).__name__})"], "models_ok": False}
 
 
-def risk_band(p: float | None, thr: float) -> str:
+def borderline_cut(thr: float) -> tuple[float, str]:
+    """Lower edge of the borderline band and where it came from."""
+    v = (explain.reference() or {}).get("r1_operating_points", {}).get("fpr_0.05")
+    if isinstance(v, (int, float)) and 0 < v < thr:
+        return float(v), "EMBER2024 score at 5% training FPR"
+    return BORDERLINE_FALLBACK, "fixed fallback (EMBER2024 operating points not available)"
+
+
+def risk_band(p: float | None, thr: float, border: float = BORDERLINE_FALLBACK) -> str:
     if p is None:
         return "none"
-    return "high" if p >= thr else ("elevated" if p >= BORDERLINE else "low")
+    return "high" if p >= thr else ("elevated" if p >= border else "low")
+
+
+def is_legacy(rep: dict[str, Any]) -> bool:
+    """A stored report from before the V8 switch (V3.2 engines); re-scanned at startup."""
+    return bool(rep) and rep.get("report_version", 1) < scanner.REPORT_VERSION
+
+
+CSV_FORMULA_START = ("=", "+", "-", "@", "\t", "\r")
+
+
+def csv_safe(v: Any) -> Any:
+    """Spreadsheet formula injection guard for CSV exports: a text cell (file name, signer, ...) that starts with = + - @
+    tab or CR gets a leading single quote. Numbers, booleans and None are left as they are."""
+    return "'" + v if isinstance(v, str) and v.startswith(CSV_FORMULA_START) else v
+
+
+def path_reason(rep: dict[str, Any]) -> str:
+    if is_legacy(rep):
+        return "legacy"
+    return ((rep.get("decision_path") or {}).get("reason")) or "none"
+
+
+def engine_view(rep: dict[str, Any]) -> dict[str, Any]:
+    """Per-report engine summary for templates: blend, R1, whether they disagree."""
+    eng = {e.get("name"): e for e in rep.get("engines") or [] if isinstance(e, dict)}
+    blend, r1 = eng.get(scanner.ENGINE_BLEND), eng.get(scanner.ENGINE_R1)
+    disagree = bool(blend and r1 and bool(blend.get("flagged")) != bool(r1.get("flagged")))
+    return {"blend": blend, "r1": r1, "disagree": disagree, "legacy": is_legacy(rep),
+            "covered": bool(blend and blend.get("coverage") == "covered")}
+
+
+@lru_cache(maxsize=1)
+def frozen_params() -> dict[str, Any]:
+    """w, t_blend, thr_R1 from the frozen candidate (no EMBER2024 model needed)."""
+    import pickle
+    try:
+        with (ROOT / "artifacts/v8/models/candidate.pkl").open("rb") as fh:
+            c = pickle.load(fh)
+        return {k: float(c[k]) for k in ("w", "t_blend", "thr_r1")}
+    except Exception:
+        return {}
+
+
+def _load_json(p: Path) -> dict[str, Any]:
+    p = p if p.is_absolute() else ROOT / p
+    try:
+        return json.loads(p.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return {}
+
+
+def evidence() -> list[dict[str, Any]]:
+    """V8 blind, V9 and V10 replication numbers, normalised from the tracked result files."""
+    out = []
+    for label, path in EVIDENCE:
+        d = _load_json(path)
+        if not d:
+            continue
+        if "arms" in d:  # V8 layout
+            arms = {k: {**v.get("fixed", {}), "roc_auc": v.get("roc_auc")} for k, v in d["arms"].items()}
+            paired = (d.get("paired") or {}).get("candidate_minus_R1", {})
+            rule = (d.get("decision") or {}).get("R1", {}).get("beaten")
+            cov = d.get("bn_coverage") or {}
+            strict = None
+        else:  # V9 / V10 layout
+            pr = d.get("primary") or {}
+            arms = {k: pr[k] for k in ("candidate", "R1", "R2") if k in pr}
+            paired = pr.get("paired") or {}
+            rule = (d.get("decision") or {}).get("R1", {}).get("met")
+            cov = d.get("coverage") or {}
+            strict = ((d.get("secondary") or {}).get("operating_points") or {}).get("0.0025")
+        out.append({"label": label, "path": path.as_posix(), "run_at": (d.get("run_at") or "")[:10], "arms": arms,
+                    "delta": paired.get("delta_tpr_b_minus_a"), "delta_ci": paired.get("delta_tpr_ci95"),
+                    "rule_met": rule, "coverage": cov, "strict": strict})
+    return out
 
 
 def create_app(data_dir: Path | None = None, *, start_worker: bool = True, scan_fn=None) -> Flask:
@@ -107,9 +202,13 @@ def create_app(data_dir: Path | None = None, *, start_worker: bool = True, scan_
         if not db.setting(key):
             db.set_setting(key, gen())
     app.secret_key = db.setting("secret_key")
-    thr = scanner.thresholds()["pe_v3"]["threshold"]
+    thr = scanner.thresholds()[scanner.ENGINE_BLEND]["threshold"]
+    border, border_src = borderline_cut(thr)
+    app.config.update(THRESHOLD=thr, BORDERLINE=border)
     notable = set().union(*(apis for _, _, apis, _ in explain.API_GROUPS.values()))
-    app.jinja_env.globals.update(thr=thr, ago=ago, DISPOSITIONS=DISPOSITIONS, GROUPS=explain.GROUPS, NOTABLE=notable,
+    app.jinja_env.globals.update(thr=thr, border=border, border_src=border_src, ago=ago, DISPOSITIONS=DISPOSITIONS,
+                                 GROUPS=explain.GROUPS, NOTABLE=notable, REASONS=REASONS, ENGINE_LABELS=ENGINE_LABELS,
+                                 ENGINE_BLEND=scanner.ENGINE_BLEND, ENGINE_R1=scanner.ENGINE_R1, MODEL_TAG=scanner.MODEL_TAG,
                                  pi=math.pi, cos=math.cos, sin=math.sin)
     jobs: queue.Queue[str] = queue.Queue()
 
@@ -168,9 +267,16 @@ def create_app(data_dir: Path | None = None, *, start_worker: bool = True, scan_
              "names": sorted({s["filename"] for s in subs if s["filename"]}), "submissions": subs}
         sigs = (rep.get("signals") or []) + explain.origin_signals(subs)
         r["all_signals"] = sigs
-        r["assessment"] = explain.assessment(r, sigs) if f["status"] == "done" else None
-        r["risk"] = risk_band(f["probability"], thr)
+        r["assessment"] = explain.assessment(r, sigs) if f["status"] == "done" and not is_legacy(rep) else None
+        r["view"] = engine_view(rep)
+        r["path_reason"] = path_reason(rep) if f["status"] == "done" else ("none" if f["status"] == "error" else "pending")
+        r["risk"] = row_risk(f, rep)
         return r
+
+    def row_risk(f: dict[str, Any], rep: dict[str, Any]) -> str:
+        if is_legacy(rep) and f.get("status") == "done":  # old V3.2 score is on another scale: use its verdict only
+            return "high" if f.get("verdict") == "malicious" else "low"
+        return risk_band(f.get("probability"), thr, border)
 
     def summarize(f: dict[str, Any]) -> dict[str, Any]:
         """Lightweight per-row view for tables (parses the stored report once)."""
@@ -179,10 +285,11 @@ def create_app(data_dir: Path | None = None, *, start_worker: bool = True, scan_
         top = next((r for r in (rep.get("explanation") or {}).get("top", [])
                     if (r["contribution"] > 0) == (f.get("verdict") == "malicious")), None)
         a = explain.assessment({**rep, "verdict": f.get("verdict"), "probability": f.get("probability")}, sigs) \
-            if f.get("status") == "done" else None
+            if f.get("status") == "done" and not is_legacy(rep) else None
         chips = [s for s in sigs if s["severity"] in ("high", "medium") or s["id"].startswith("format_") or s["id"] == "signed_valid"][:4]
         signer = (rep.get("pe") or {}).get("signature", {})
-        return {**{k: v for k, v in f.items() if k != "report_json"}, "risk": risk_band(f.get("probability"), thr),
+        return {**{k: v for k, v in f.items() if k != "report_json"}, "risk": row_risk(f, rep), "legacy": is_legacy(rep),
+                "path_reason": path_reason(rep) if f.get("status") == "done" else None, "disagree": engine_view(rep)["disagree"],
                 "top_reason": top, "assessment": a, "chips": chips,
                 "signer": signer.get("signer") if isinstance(signer, dict) and signer.get("status") == "Valid" else "",
                 "pe_format": (rep.get("pe") or {}).get("format"), "is_dll": (rep.get("pe") or {}).get("is_dll")}
@@ -259,18 +366,22 @@ def create_app(data_dir: Path | None = None, *, start_worker: bool = True, scan_
 
     def correlations(done: list[dict[str, Any]]) -> dict[str, Any]:
         """Cross-file views for the dashboard: engine agreement, score over time, signal co-occurrence, reason heatmap."""
-        thr_v1s = scanner.thresholds()["pe_v1s"]["threshold"]
         rows = []
         for f in done:
             rep = json.loads(f["report_json"] or "{}")
-            eng = {e["name"]: e["probability"] for e in rep.get("engines", [])}
             sig = (rep.get("pe") or {}).get("signature") or {}
-            p = f["probability"]
-            cls = "malicious" if f["verdict"] == "malicious" else ("borderline" if (p or 0) >= BORDERLINE else "benign")
-            rows.append({"f": f, "rep": rep, "eng": eng, "cls": cls, "signed": isinstance(sig, dict) and sig.get("status") == "Valid",
+            risk = row_risk(f, rep)
+            cls = "malicious" if f["verdict"] == "malicious" else ("borderline" if risk == "elevated" else "benign")
+            rows.append({"f": f, "rep": rep, "view": engine_view(rep), "reason": path_reason(rep), "cls": cls,
+                         "signed": isinstance(sig, dict) and sig.get("status") == "Valid",
                          "sigs": {s["id"] for s in rep.get("signals") or []}})
-        pts = [{"x": r["eng"]["pe_v3"], "y": r["eng"]["pe_v1s"], "cls": r["cls"], "signed": r["signed"], "name": r["f"]["name"],
-                "sha": r["f"]["sha256"]} for r in rows if "pe_v3" in r["eng"] and "pe_v1s" in r["eng"]]
+        # Engine agreement on Binary-Ninja-covered files only: on fallback files the blend IS EMBER2024 (identical scores).
+        pts = [{"x": r["view"]["blend"].get("probability"), "y": r["view"]["r1"].get("probability"), "cls": r["cls"], "signed": r["signed"],
+                "name": r["f"]["name"], "sha": r["f"]["sha256"], "disagree": r["view"]["disagree"]}
+               for r in rows if r["view"]["covered"] and r["view"]["r1"]
+               and r["view"]["blend"].get("probability") is not None and r["view"]["r1"].get("probability") is not None]
+        paths = Counter(r["reason"] for r in rows)
+        n_fallback = sum(n for k, n in paths.items() if k.startswith("bn_"))
         pearson = None
         if len(pts) >= 3:
             xs, ys = [q["x"] for q in pts], [q["y"] for q in pts]
@@ -278,7 +389,7 @@ def create_app(data_dir: Path | None = None, *, start_worker: bool = True, scan_
             sxy = sum((a - mx) * (b - my) for a, b in zip(xs, ys))
             sx, sy = sum((a - mx) ** 2 for a in xs) ** .5, sum((b - my) ** 2 for b in ys) ** .5
             pearson = sxy / (sx * sy) if sx and sy else None
-        agree = sum(1 for q in pts if (q["x"] >= thr) == (q["y"] >= thr_v1s))
+        agree = sum(1 for q in pts if not q["disagree"])
         # score over time
         ts = sorted(rows, key=lambda r: r["f"]["first_seen"] or "")
         timeline, labels = [], []
@@ -305,7 +416,7 @@ def create_app(data_dir: Path | None = None, *, start_worker: bool = True, scan_
         flag_rate = {k: sum(1 for r in rows if k in r["sigs"] and r["cls"] == "malicious") / counts[k] for k in top}
         base_rate = sum(1 for r in rows if r["cls"] == "malicious") / len(rows) if rows else 0
         # reason-group heatmap for the highest-scoring files
-        order = [g for g in explain.GROUPS if g != "size"]
+        order = [g for g in explain.GROUPS if g != "size"]  # "size" may not exist in every GROUPS version; harmless
         hot = sorted(rows, key=lambda r: -(r["f"]["probability"] or 0))[:12]
         heat = []
         for r in hot:
@@ -313,7 +424,8 @@ def create_app(data_dir: Path | None = None, *, start_worker: bool = True, scan_
             heat.append({"name": r["f"]["name"], "sha": r["f"]["sha256"], "p": r["f"]["probability"] or 0, "cls": r["cls"],
                          "cells": [gm.get(g, 0.0) for g in order], "nsis": "format_nsis" in r["sigs"], "signed": r["signed"]})
         hmax = max([abs(c) for h in heat for c in h["cells"]] + [0.01])
-        return {"scatter": pts, "pearson": pearson, "agree": agree, "thr_v1s": thr_v1s, "timeline": timeline, "labels": labels,
+        return {"scatter": pts, "pearson": pearson, "agree": agree, "n_covered": paths.get("covered", 0), "n_fallback": n_fallback,
+                "paths": sorted(paths.items(), key=lambda kv: -kv[1]), "timeline": timeline, "labels": labels,
                 "co_ids": top, "co_titles": [titles.get(k, k) for k in top], "co": co, "co_counts": [counts[k] for k in top],
                 "flag_rate": [flag_rate[k] for k in top], "base_rate": base_rate,
                 "heat": heat, "heat_groups": [explain.GROUPS[g][0] for g in order], "hmax": hmax}
@@ -323,7 +435,7 @@ def create_app(data_dir: Path | None = None, *, start_worker: bool = True, scan_
     def home():
         files = db.q("SELECT * FROM files")
         stats = {"total": len(files), "flagged": sum(1 for f in files if f["verdict"] == "malicious"),
-                 "review": sum(1 for f in files if not f["disposition"] and (f["verdict"] == "malicious" or (f["probability"] or 0) >= BORDERLINE)),
+                 "review": sum(1 for f in files if not f["disposition"] and (f["verdict"] == "malicious" or (f["probability"] or 0) >= border)),
                  "sensors": sum(s["online"] for s in sensors_with_health())}
         recent = [summarize(f) for f in db.q("SELECT * FROM files ORDER BY last_seen DESC LIMIT 6")]
         return render_template("home.html", stats=stats, recent=recent)
@@ -340,19 +452,19 @@ def create_app(data_dir: Path | None = None, *, start_worker: bool = True, scan_
                       "JOIN files f ON f.sha256=s.sha256 WHERE s.at >= ?", (days[0],)):
             if r["day"] in per_day:
                 k = "pending" if r["st"] in ("queued", "scanning") else ("error" if r["st"] == "error" else
-                    ("malicious" if r["v"] == "malicious" else ("borderline" if (r["p"] or 0) >= BORDERLINE else "benign")))
+                    ("malicious" if r["v"] == "malicious" else ("borderline" if border <= (r["p"] or 0) < thr else "benign")))
                 per_day[r["day"]][k] += 1
         mal = [f for f in done if f["verdict"] == "malicious"]
-        border = [f for f in done if f["verdict"] == "benign" and (f["probability"] or 0) >= BORDERLINE]
+        bline = [f for f in done if f["verdict"] == "benign" and border <= (f["probability"] or 0) < thr]
         sensors = sensors_with_health()
         ms = [f["scan_ms"] for f in done if f["scan_ms"] is not None]
         kpi = {
             "total": len(files), "today": sum(1 for f in files if (f["first_seen"] or "")[:10] == today.isoformat()),
-            "malicious": len(mal), "borderline": len(border),
-            "benign": sum(1 for f in done if f["verdict"] == "benign") - len(border),
+            "malicious": len(mal), "borderline": len(bline),
+            "benign": sum(1 for f in done if f["verdict"] == "benign") - len(bline),
             "pending": sum(1 for f in files if f["status"] in ("queued", "scanning")),
             "errors": sum(1 for f in files if f["status"] == "error"),
-            "unreviewed": sum(1 for f in mal + border if not f["disposition"]),
+            "unreviewed": sum(1 for f in mal + bline if not f["disposition"]),
             "false_positives": sum(1 for f in files if f["disposition"] == "false_positive"),
             "confirmed": sum(1 for f in files if f["disposition"] == "confirmed"),
             "sensors_online": sum(s["online"] for s in sensors), "sensors_total": len(sensors),
@@ -361,7 +473,7 @@ def create_app(data_dir: Path | None = None, *, start_worker: bool = True, scan_
         spark = {k: [per_day[d][k] for d in days] for k in ("malicious", "benign", "borderline")}
         spark["total"] = [sum(per_day[d].values()) for d in days]
         attention = sorted((summarize(f) for f in files if not f["disposition"] and (
-            f["verdict"] == "malicious" or f["status"] == "error" or (f["verdict"] == "benign" and (f["probability"] or 0) >= BORDERLINE))),
+            f["verdict"] == "malicious" or f["status"] == "error" or (f["verdict"] == "benign" and border <= (f["probability"] or 0) < thr))),
             key=lambda s: -(s["probability"] or 0))[:8]
         group_push: dict[str, list[float]] = defaultdict(list)
         sig_counts: Counter = Counter()
@@ -372,7 +484,7 @@ def create_app(data_dir: Path | None = None, *, start_worker: bool = True, scan_
             rep = json.loads(f["report_json"] or "{}")
             if f["verdict"] == "malicious":
                 for g in (rep.get("explanation") or {}).get("groups", []):
-                    if g["contribution"] > 0:
+                    if g.get("contribution", 0) > 0 and g.get("group") in explain.GROUPS:
                         group_push[g["group"]].append(g["contribution"])
             for s in rep.get("signals") or []:
                 key = s["id"]
@@ -380,8 +492,8 @@ def create_app(data_dir: Path | None = None, *, start_worker: bool = True, scan_
                 sig_titles.setdefault(key, explain.generic_title(s))
                 if f["verdict"] == "malicious":
                     sig_flagged[key] += 1
-            if f["probability"] is not None:
-                bins[min(int(f["probability"] * 20), 19)] += 1
+            if f["probability"] is not None and not is_legacy(rep):
+                bins[min(max(int(f["probability"] * 20), 0), 19)] += 1
         reasons_agg = sorted(((explain.GROUPS[g][0], sum(v) / max(len(mal), 1), len(v)) for g, v in group_push.items()), key=lambda x: -x[1])[:6]
         corr = correlations(done)
         signals_agg = [(sig_titles[k], n, sig_flagged[k]) for k, n in sig_counts.most_common(8)]
@@ -475,7 +587,8 @@ def create_app(data_dir: Path | None = None, *, start_worker: bool = True, scan_
         rows = []
         for sha in shas:
             r = full_report(sha)
-            eng = {e["name"]: e for e in r.get("engines", [])}
+            eng = {e["name"]: e for e in r.get("engines") or [] if isinstance(e, dict) and e.get("name")}
+            dp = r.get("decision_path") or {}
             sig = (r.get("pe") or {}).get("signature")
             a = r.get("assessment") or {}
             top = ((r.get("explanation") or {}).get("top") or [{}])[0]
@@ -484,11 +597,16 @@ def create_app(data_dir: Path | None = None, *, start_worker: bool = True, scan_
                 "size": r["size"], "names": ";".join(r["names"]), "status": r["status"], "verdict": r["verdict"],
                 "risk": r["risk"], "assessment": a.get("label"), "disposition": DISPOSITIONS.get(r.get("disposition") or "", ""),
                 "flag_count": r.get("flag_count"), "engine_count": r.get("engine_count"),
-                **{f"{n}_{k}": eng.get(n, {}).get(k) for n in ("pe_v3", "pe_v1s") for k in ("probability", "threshold", "flagged")},
+                "decision_path": dp.get("path") or ("legacy_v3.2" if r["view"]["legacy"] else None),
+                "fallback_reason": (eng.get(scanner.ENGINE_BLEND) or {}).get("fallback_reason"),
+                "engines_disagree": r["view"]["disagree"],
                 "top_reason": top.get("title"), "top_reason_contribution": top.get("contribution"),
                 "signals": ";".join(s["title"] for s in r.get("all_signals", [])),
                 "signature": sig.get("status") if isinstance(sig, dict) else sig,
                 "signer": sig.get("signer") if isinstance(sig, dict) else "",
+                **{f"{n}_{k}": e.get(src) for n, e in eng.items()
+                   for k, src in (("score", "probability"), ("threshold", "threshold"), ("flagged", "flagged"))},
+                **{k: (eng.get(scanner.ENGINE_BLEND) or {}).get(k) for k in ("blend_margin", "bn_score") if scanner.ENGINE_BLEND in eng},
                 "first_seen": r["first_seen"], "last_seen": r["last_seen"], "submissions": len(r["submissions"]),
                 "sources": ";".join(sorted({s["source"] for s in r["submissions"]})), "scan_ms": r.get("scan_ms"),
             })
@@ -497,9 +615,10 @@ def create_app(data_dir: Path | None = None, *, start_worker: bool = True, scan_
     def csv_response(rows: list[dict[str, Any]], name: str) -> Response:
         buf = io.StringIO()
         if rows:
-            w = csv.DictWriter(buf, fieldnames=list(rows[0]))
+            fields = list(dict.fromkeys(k for r in rows for k in r))  # engines can differ between rows (old reports)
+            w = csv.DictWriter(buf, fieldnames=fields)
             w.writeheader()
-            w.writerows(rows)
+            w.writerows([{k: csv_safe(v) for k, v in r.items()} for r in rows])
         return Response(buf.getvalue(), mimetype="text/csv", headers={"Content-Disposition": f"attachment; filename={name}"})
 
     @app.get("/file/<sha>/csv")
@@ -514,8 +633,8 @@ def create_app(data_dir: Path | None = None, *, start_worker: bool = True, scan_
         a, where, args = request.args, [], []
         v = a.get("verdict", "")
         if v == "borderline":
-            where.append("f.verdict='benign' AND f.probability >= ?")
-            args.append(BORDERLINE)
+            where.append("f.verdict='benign' AND f.probability >= ? AND f.probability < ?")
+            args += [border, thr]
         elif v in ("malicious", "benign"):
             where.append("f.verdict=?")
             args.append(v)
@@ -600,8 +719,12 @@ def create_app(data_dir: Path | None = None, *, start_worker: bool = True, scan_
         sigs = sorted(((sig_meta[k], c) for k, c in sig_by_verdict.items()), key=lambda x: -sum(x[1].values()))
         feats = sorted(((t, len(v), sum(v) / len(v)) for t, v in feat_push.items()), key=lambda x: -x[1] * x[2])[:10]
         n_mal = sum(1 for f in done if f["verdict"] == "malicious")
+        ref = explain.reference() or {}
+        classes = [(k, c) for k, c in (ref.get("classes") or {}).items()
+                   if isinstance(c, dict) and isinstance(c.get("benign"), (int, float)) and isinstance(c.get("malicious"), (int, float))]
         return render_template("insights.html", cols=cols, only=only, n=len(rows), sigs=sigs, feats=feats,
-                               n_done=len(done), n_mal=n_mal, ref=explain.reference())
+                               n_done=len(done), n_mal=n_mal, ref=ref, classes=classes,
+                               ref_path=Path(str(getattr(explain, "REFERENCE", ""))).as_posix())
 
     # ---------- sensors ----------
     @app.route("/sensors", methods=["GET", "POST"])
@@ -632,11 +755,13 @@ def create_app(data_dir: Path | None = None, *, start_worker: bool = True, scan_
     @app.get("/model")
     @login_required
     def model():
-        blind_path = Path("artifacts/v3.2/blind/blind_results.json")
-        blind = json.loads(blind_path.read_text(encoding="utf-8")) if blind_path.is_file() else {}
         fs = freeze_status()
-        return render_template("model.html", thrs=scanner.thresholds(), bad=fs["bad"], models_ok=fs["models_ok"], blind=blind,
-                               cal=json.loads(scanner.CALIBRATION.read_text(encoding="utf-8")), ref=explain.reference())
+        ref = explain.reference() or {}
+        ops = ref.get("r1_operating_points") if isinstance(ref.get("r1_operating_points"), dict) else {}
+        nsis = (ref.get("classes") or {}).get("nsis")
+        return render_template("model.html", thrs=scanner.thresholds(), bad=fs["bad"], models_ok=fs["models_ok"], ev=evidence(),
+                               params=frozen_params(), ops=ops, nsis=nsis if isinstance(nsis, dict) else None,
+                               scale_note=scanner.SCALE_NOTE)
 
     @app.route("/settings", methods=["GET", "POST"])
     @login_required
@@ -650,7 +775,19 @@ def create_app(data_dir: Path | None = None, *, start_worker: bool = True, scan_
             flash(f"Queued {n} file(s) for re-analysis.", "ok")
             return redirect(url_for("settings"))
         return render_template("settings.html", api_key=db.setting("api_key"), base=request.host_url.rstrip("/"),
-                               env_pw=bool(os.environ.get("SA2_ADMIN_PASSWORD")), data_dir=str(data_dir))
+                               env_pw=bool(os.environ.get("SA2_ADMIN_PASSWORD")), data_dir=str(data_dir), bn=bn_status())
+
+    def bn_status() -> dict[str, Any]:
+        """Binary Ninja configuration in effect, and whether its MCP endpoint answers now (short probe)."""
+        from src.v8 import bn_live
+        cfg = bn_live.settings()
+        out = {**cfg, "reachable": None, "windows": os.name == "nt", "probe_error": None}
+        if cfg["enabled"]:
+            try:
+                out["reachable"] = bool(bn_live.probe(cfg["url"], min(cfg["probe_timeout"], 2.0)))
+            except Exception as e:
+                out["reachable"], out["probe_error"] = False, type(e).__name__
+        return out
 
     @app.get("/glossary")
     @login_required
@@ -662,7 +799,7 @@ def create_app(data_dir: Path | None = None, *, start_worker: bool = True, scan_
     @require_key
     def api_ping():
         t = scanner.thresholds()
-        return jsonify(ok=True, server="SA2 Scan", model_tag=scanner.MODEL_TAG,
+        return jsonify(ok=True, server="SA2 Scan", model_tag=scanner.MODEL_TAG, decision_engine=scanner.ENGINE_BLEND,
                        thresholds={k: v["threshold"] for k, v in t.items()}, time=now())
 
     @app.post("/api/v1/sensors/heartbeat")
@@ -732,14 +869,46 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--host", default="127.0.0.1", help="Bind address (use 0.0.0.0 only on a trusted lab network)")
     ap.add_argument("--port", type=int, default=8000)
     args = ap.parse_args(argv)
-    os.chdir(ROOT)  # model/freeze paths in src.v3 are repo-relative
-    scanner.bundle()  # load models before serving; fail fast if artifacts are missing
+    os.chdir(ROOT)  # some research modules use repo-relative paths
+    from src.v8 import bn_live, deploy
+    try:
+        if bn_live.restore_settings():
+            print("  Restored your Binary Ninja settings.json (an earlier scan was interrupted).")
+    except OSError as e:
+        print(f"  Warning: could not restore Binary Ninja settings ({e}). Backup: %APPDATA%\\Binary Ninja\\{bn_live.SETTINGS_BACKUP}")
+    try:
+        import thrember  # noqa: F401  (EMBER2024 feature extractor)
+    except ImportError:
+        print("  [error] Python package 'thrember' is missing. Run: .venv\\Scripts\\python.exe -m pip install -r requirements.txt",
+              file=sys.stderr)
+        return 2
+    try:
+        scanner.bundle()  # load models before serving; downloads EMBER2024_PE.model on first use
+    except deploy.ModelMissing as e:
+        print(f"  [error] EMBER2024 model not available ({e.kind.replace('_', ' ')}): {e}", file=sys.stderr)
+        return 2
+    except SystemExit as e:  # freeze verification or bundle consistency failure
+        print(f"  [error] Could not load the frozen V8 bundle: {e}", file=sys.stderr)
+        return 2
+    except FileNotFoundError as e:
+        print(f"  [error] Missing model file: {e.filename}. These files are tracked in git; run 'git pull'.", file=sys.stderr)
+        return 2
     app = create_app()
     db: DB = app.config["DB"]
     pw = "(from SA2_ADMIN_PASSWORD)" if os.environ.get("SA2_ADMIN_PASSWORD") else db.setting("admin_password")
+    bn = bn_live.settings()
     print(f"\n  SA2 Scan       http://{args.host}:{args.port}/")
     print(f"  Sign in with   password: {pw}")
-    print(f"  EDR API key    {db.setting('api_key')}\n", flush=True)
+    print(f"  EDR API key    {db.setting('api_key')}")
+    print(f"  Model          V8 blend, threshold {app.config['THRESHOLD']:.4f} (EMBER2024-only when Binary Ninja features are unavailable)")
+    if not bn["enabled"]:
+        print("  Binary Ninja   disabled (SA2_BN=0): every verdict is EMBER2024 alone")
+    else:
+        print(f"  Binary Ninja   used when its MCP server answers at {bn['url']}")
+        if bn["mode_switch"] == "restart" and os.name == "nt":
+            print("  WARNING        each scan that needs Binary Ninja force-closes and restarts it (minutes per file). "
+                  "Save your work in Binary Ninja, or set SA2_BN_MODE_SWITCH=off or SA2_BN=0.")
+    print("", flush=True)
     app.run(host=args.host, port=args.port, threaded=True, use_reloader=False)
     return 0
 

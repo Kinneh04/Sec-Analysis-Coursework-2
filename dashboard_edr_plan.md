@@ -1,5 +1,7 @@
 # Dashboard + EDR Plan (SA2 deployment layer)
 
+> **Note (2026-11-18):** historical document. It describes the earlier V3.2 / Python 3.10 deployment. For the current V8 deployment (V8 blend of EMBER2024 and the Binary Ninja model) see the [README](README.md) and [docs/operator_guide.md](docs/operator_guide.md).
+
 **Status (2026-11-16):** M0–M5 built and smoke-tested. Both apps start from `dashboard.setup.bat` / `edr.setup.bat`. A benign test app was transported EDR → dashboard via the allowlist and scored benign (§9). 73/73 tests pass. Remaining: written user manual (M6).
 **Owner scope:** (1) "SA2 Scan", a file uploader and admin panel modelled on VirusTotal, on port **8000**. (2) "SA2 Sentinel", an EDR agent that runs on this machine, with a web console modelled on Carbon Black, on port **8001**. The agent connects to the SA2 Scan admin panel through settings in its own web UI.
 **Upstream:** the ML research in `plan.md`, `SA2_V2_plan.md` and `docs/v3*`–`v9_results.md`. These two apps **consume** the frozen V3.2 models. They do not retrain them or change any research artifact.

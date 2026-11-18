@@ -34,22 +34,23 @@
   </section>
 
   <section class="card c12">
-    <div class="card-h"><h3>Known model biases (training data)</h3><span class="sub">V3.2 training pool: {{ ref.n.benign if ref.n else '?' }} benign / {{ ref.n.malicious if ref.n else '?' }} malware files</span></div>
+    <div class="card-h"><h3>File kinds in the training pool</h3><span class="sub">{% if ref.n is mapping %}{{ ref.n.benign }} benign / {{ ref.n.malicious }} malware files{% else %}pool size not recorded{% endif %}</span></div>
     <div class="card-b">
-      {% if ref.classes %}
-      <table class="table compact"><thead><tr><th>File kind</th><th style="text-align:right">Benign</th><th style="text-align:right">Malware</th><th>Malware share</th><th>What it means for verdicts</th></tr></thead><tbody>
-        {% for key, label, note in [
-          ('nsis', 'NSIS installers / uninstallers', 'Almost every NSIS file the model saw was malware, so benign NSIS files are often flagged (known false-positive class).'),
-          ('upx', 'UPX-packed files', 'Only malware was UPX-packed in training; any UPX file will look suspicious to the model.'),
-          ('dotnet', '.NET assemblies', 'Balanced between classes; no strong format bias.'),
-          ('signature_block', 'Files with an embedded signature', 'Signed files are mostly benign in training, so an embedded signature pulls scores down.'),
-          ('high_entropy_overlay', 'High-entropy appended data', 'Common in both classes (signatures are appended data too); not a malware sign on its own.')] %}
-          {% set c = ref.classes[key] %}{% set tot = c.benign + c.malicious %}
-          <tr><td><b>{{ label }}</b></td><td class="tnum" style="text-align:right">{{ c.benign }}</td><td class="tnum red" style="text-align:right">{{ c.malicious }}</td>
+      {% if classes %}
+      <table class="table compact"><thead><tr><th>File kind</th><th style="text-align:right">Benign</th><th style="text-align:right">Malware</th><th>Malware share</th>
+        <th style="text-align:right">Benign flagged by EMBER2024</th><th>How it is detected</th></tr></thead><tbody>
+        {% set labels = {'nsis': 'NSIS installers / uninstallers', 'upx': 'UPX-packed files', 'dotnet': '.NET assemblies',
+                         'signature_block': 'Files with an embedded signature', 'high_entropy_overlay': 'High-entropy appended data'} %}
+        {% for key, c in classes %}{% set tot = c.benign + c.malicious %}
+          <tr><td><b>{{ labels.get(key, key.replace('_', ' ') | capitalize) }}</b></td><td class="tnum" style="text-align:right">{{ c.benign }}</td><td class="tnum red" style="text-align:right">{{ c.malicious }}</td>
             <td style="width:150px"><div class="meter"><div class="track"><div class="fill high" style="width:{{ 100 * c.malicious / tot if tot else 0 }}%"></div></div>
-              <span class="num">{{ '%.0f%%' % (100 * c.malicious / tot) if tot else '–' }}</span></div></td><td class="small">{{ note }}</td></tr>
+              <span class="num">{{ '%.0f%%' % (100 * c.malicious / tot) if tot else '–' }}</span></div></td>
+            <td class="tnum" style="text-align:right">{% if c.benign_flagged_r1 is number %}{{ c.benign_flagged_r1 }} of {{ c.benign }}{% else %}–{% endif %}</td>
+            <td class="small">{{ c.how or '' }}</td></tr>
         {% endfor %}</tbody></table>
-      <p class="muted small" style="margin:10px 0 0">Counts come from <code>artifacts/v3.2/feature_reference.json</code> (built by <code>python -m src.webscan.reference</code>). NSIS/UPX counts are approximate (hashed section names).</p>
+      <p class="muted small" style="margin:10px 0 0">Counts come from <code>{{ ref_path }}</code> (built by <code>python -m src.webscan.reference</code>). "Benign flagged" counts benign files of that kind
+        with an EMBER2024 score at or above its 1% training-FPR threshold. A skewed malware share shows what the pool contained; it is not, on its own, evidence that the model is biased against the format.
+        NSIS and UPX detection is approximate (hashed section slots).</p>
       {% else %}<p class="muted">Reference statistics not available.</p>{% endif %}
     </div>
   </section>

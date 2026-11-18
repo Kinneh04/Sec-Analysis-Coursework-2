@@ -1,17 +1,26 @@
 @echo off
-rem SA2 Scan dashboard (VT-style uploader + admin panel). Usage: dashboard.setup.bat [port]   (default 8000)
+rem SA2 Scan dashboard (V8 blend: EMBER2024 + Binary Ninja). Usage: dashboard.setup.bat [port]   (default 8000)
 rem Set SA2_ADMIN_PASSWORD to choose the admin password; otherwise one is generated and printed below.
+rem Binary Ninja: set SA2_BN=0 to disable it. With the default SA2_BN_MODE_SWITCH=restart, each scan restarts Binary Ninja.
+rem Only one process should use Binary Ninja at a time: a second dashboard or CLI scorer gets bn_busy and EMBER2024 decides.
 title SA2 Scan dashboard
 cd /d "%~dp0"
 call scripts\ensure_venv.bat || goto fail
 
-if not exist "artifacts\v3.2\models\final_pe_v3.pkl" (
-  echo [setup] Missing model: artifacts\v3.2\models\final_pe_v3.pkl
-  echo         artifacts\ is not in git. Copy the artifacts\v3.2 and artifacts\deploy folders from the project machine.
-  goto fail
+for %%F in (artifacts\v8\models\candidate.pkl artifacts\v8\models\R1.pkl artifacts\v8\freeze\freeze_manifest.json) do (
+  if not exist "%%F" (
+    echo [setup] Missing model file: %%F
+    echo         These files are tracked in git. Run "git pull", or clone the repository again.
+    goto fail
+  )
 )
-if not exist "artifacts\deploy\calibration_temporal_benign.json" (
-  echo [setup] Missing artifacts\deploy\calibration_temporal_benign.json ^(calibrated threshold^).
+
+rem Pretrained EMBER2024 model, 3.7 MB, Apache-2.0, hash-checked: downloaded if missing, replaced if its hash is wrong,
+rem otherwise only verified. With SA2_EMBER_DOWNLOAD=0 it is only verified and never downloaded.
+".venv\Scripts\python.exe" -m src.v8.deploy --download-model
+if errorlevel 1 (
+  echo [setup] The EMBER2024 model is not usable. The [error] line above says why: missing, wrong hash or download failed.
+  echo         To install it by hand, copy EMBER2024_PE.model into artifacts\ember2024\models\artifacts\ember2024\models\ and re-run.
   goto fail
 )
 

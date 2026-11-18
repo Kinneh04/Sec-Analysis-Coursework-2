@@ -1,16 +1,18 @@
 [project]
 name = "sa2-malware-ml"
 version = "0.1.0"
-description = "Binary Ninja–enhanced static PE malware classification (ICT3214 SA2)"
+description = "Static PE malware classification: EMBER2024 + Binary Ninja blend (ICT3214 SA2)"
 requires-python = ">=3.11"
 dependencies = [
-  "pefile>=2024.8",
-  "pandas>=2.0",
+  "pefile==2024.8.26",  # EMBER v3 feature values depend on it
+  "signify==0.7.1",  # EMBER v3 signature features
+  "thrember @ https://github.com/FutureComputing4AI/EMBER2024/archive/0ef753e81d98bf209f71b03cd331dfc190b5b54d.zip#sha256=8d4596cfd1f4bb92b30a1250437fcecd5ec5a5e2d2d590079c40e8074b97d5d4",
+  "pandas>=2.0,<3",
   "pyarrow>=15",
   "pyyaml>=6",
-  "scikit-learn==1.7.2",  # must match the frozen V3.2 pickles
-  "lightgbm>=4.0",
-  "numpy>=1.26",
+  "scikit-learn==1.7.2",  # must match the frozen V8 and V3.2 pickles
+  "lightgbm==4.7.0",  # must match the frozen V8 pickles
+  "numpy==2.2.6",  # version the research used
   "flask>=3.0",
   "psutil>=5.9",
 ]

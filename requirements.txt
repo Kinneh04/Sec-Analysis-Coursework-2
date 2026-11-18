@@ -1,10 +1,15 @@
-# Runtime for the SA2 scorer (src/v3/score.py), dashboard (8000) and EDR (8001).
-# scikit-learn is pinned: the frozen V3.2 pickles were written with 1.7.2.
+# Runtime for SA2 Scan (8000), SA2 Sentinel (8001) and the V8 scorer (python -m src.v8.deploy).
+# Pins that affect verdicts:
+#   lightgbm==4.7.0, scikit-learn==1.7.2  match the frozen V8 pickles (artifacts/v8/models/) and the V3.2 pickles
+#   pefile==2024.8.26, signify==0.7.1    versions the research used; both change EMBER v3 feature values
+#   thrember                             EMBER2024 feature extractor (not on PyPI), pinned to a GitHub commit zip
 scikit-learn==1.7.2
-lightgbm>=4.0
-pefile>=2024.8
-numpy>=1.26
-pandas>=2.0
+lightgbm==4.7.0
+pefile==2024.8.26
+signify==0.7.1
+thrember @ https://github.com/FutureComputing4AI/EMBER2024/archive/0ef753e81d98bf209f71b03cd331dfc190b5b54d.zip#sha256=8d4596cfd1f4bb92b30a1250437fcecd5ec5a5e2d2d590079c40e8074b97d5d4
+numpy==2.2.6  # version the research used; the frozen scores were validated with it
+pandas>=2.0,<3  # the frozen scores were validated with pandas 2.3
 pyarrow>=15
 pyyaml>=6
 flask>=3.0

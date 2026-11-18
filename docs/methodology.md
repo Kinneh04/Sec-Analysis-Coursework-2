@@ -1,5 +1,7 @@
 # Methodology summary
 
+> **Note (2026-11-18):** this document covers the V1 pilot only. Later results: `docs/v3.2_results.md` (V3.2, the dashboard model until November 2026), `docs/v8_results.md`, `docs/v9_results.md` and `docs/v10_results.md` (the V8 blend now deployed in SA2 Scan).
+
 ## Task
 Static PE malware vs benign classification with three models (Logistic Regression, Random Forest, LightGBM) and ablations: PE-only, BN-only, PE+BN.
 

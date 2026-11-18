@@ -26,7 +26,7 @@
     <a class="{{ 'on' if ep == 'settings' }}" href="{{ url_for('settings') }}" title="Settings & API">{{ icon('settings', 'sm') }}</a>
     <button type="button" data-theme-toggle title="Toggle light / dark">{{ icon('sun', 'sm') }}</button>
     <a href="{{ url_for('logout') }}" title="Sign out">{{ icon('logout', 'sm') }}</a>
-    <a class="modelchip" href="{{ url_for('model') }}" title="Model status"><span class="dot {{ '' if models_ok else 'bad' }}"></span>v3.2 · {{ '%.4f' % thr }}</a>
+    <a class="modelchip" href="{{ url_for('model') }}" title="Model status"><span class="dot {{ '' if models_ok else 'bad' }}"></span>V8 blend · {{ '%.4f' % thr }}</a>
   </nav>
 </header>
 <main class="content">

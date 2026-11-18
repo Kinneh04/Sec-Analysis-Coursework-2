@@ -1,5 +1,7 @@
 # User manual
 
+> **Note (2026-11-18):** historical document. It describes the earlier V3.2 / Python 3.10 deployment. For the current V8 deployment (V8 blend of EMBER2024 and the Binary Ninja model) see the [README](../README.md) and [docs/operator_guide.md](operator_guide.md).
+
 ## Prerequisites
 - Windows, Python 3.10 venv at `.venv`
 - Binary Ninja **GUI running** (Personal license; MCP at `http://127.0.0.1:24642/mcp`)

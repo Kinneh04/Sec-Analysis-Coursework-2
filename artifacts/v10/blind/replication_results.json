@@ -1,0 +1,490 @@
+{
+  "run_at": "2026-11-16T10:31:16.336496+00:00",
+  "dropped_no_ember": 0,
+  "coverage": {
+    "benign": 0.7775,
+    "malicious": 0.7176
+  },
+  "primary": {
+    "candidate": {
+      "tpr": 0.9324,
+      "fpr": 0.0015,
+      "tp": 2331,
+      "fp": 3,
+      "n_malicious": 2500,
+      "n_benign": 2000,
+      "tpr_ci95": [
+        0.9218802932150205,
+        0.9415928593997456
+      ],
+      "fpr_ci95": [
+        0.0005102543486519297,
+        0.004401111899059467
+      ],
+      "min_attainable_fpr": 0.0005
+    },
+    "R1": {
+      "tpr": 0.9204,
+      "fpr": 0.002,
+      "tp": 2301,
+      "fp": 4,
+      "n_malicious": 2500,
+      "n_benign": 2000,
+      "tpr_ci95": [
+        0.9091331489548643,
+        0.9303768264365501
+      ],
+      "fpr_ci95": [
+        0.0007780147254709095,
+        0.005131434404639974
+      ],
+      "min_attainable_fpr": 0.0005
+    },
+    "gained_tp": 35,
+    "lost_tp": 5,
+    "added_fp": 0,
+    "removed_fp": 1,
+    "mcnemar_exact_p_two_sided_malware": 1.382612026645802e-06,
+    "paired": {
+      "delta_tpr_b_minus_a": 0.012,
+      "delta_tpr_ci95": [
+        0.006921612987191901,
+        0.016929292608585216
+      ],
+      "delta_fpr_b_minus_a": -0.0005,
+      "delta_fpr_ci95": [
+        -0.0015416634946011443,
+        0.0
+      ],
+      "fraction_b_better_tpr": 1.0,
+      "n_groups": 4089,
+      "n_boot": 2000,
+      "seed": 42
+    },
+    "R2": {
+      "tpr": 0.8208,
+      "fpr": 0.0005,
+      "tp": 2052,
+      "fp": 1,
+      "n_malicious": 2500,
+      "n_benign": 2000,
+      "tpr_ci95": [
+        0.8052773065338642,
+        0.8353382979037326
+      ],
+      "fpr_ci95": [
+        8.826546015058292e-05,
+        0.0028269350227618393
+      ],
+      "min_attainable_fpr": 0.0005
+    },
+    "paired_vs_R2": {
+      "delta_tpr_b_minus_a": 0.1116,
+      "delta_tpr_ci95": [
+        0.09537557957870033,
+        0.12806372849591693
+      ],
+      "delta_fpr_b_minus_a": 0.001,
+      "delta_fpr_ci95": [
+        0.0,
+        0.0030565850497195047
+      ],
+      "fraction_b_better_tpr": 1.0,
+      "n_groups": 4089,
+      "n_boot": 2000,
+      "seed": 42
+    },
+    "n": 4500,
+    "n_benign": 2000,
+    "n_malicious": 2500,
+    "n_groups": 4089
+  },
+  "decision": {
+    "R1": {
+      "tpr_higher_ci_lower_gt_0": true,
+      "fpr_not_higher": true,
+      "met": true
+    },
+    "R2": {
+      "tpr_higher_ci_lower_gt_0": true,
+      "fpr_not_higher": false,
+      "met": false
+    },
+    "v8_improvement_confirmed": true
+  },
+  "secondary": {
+    "auc_candidate_vs_r1": {
+      "auc_a": 0.997517,
+      "auc_b": 0.9980448000000001,
+      "delta": 0.0005278000000000782,
+      "delta_ci95": [
+        0.0001612537443575368,
+        0.0009554237390136553
+      ]
+    },
+    "operating_points": {
+      "0.0025": {
+        "gained_tp": 16,
+        "lost_tp": 43,
+        "added_fp": 0,
+        "removed_fp": 2,
+        "mcnemar_exact_p_two_sided_malware": 0.0005843646280443461,
+        "cand_tp": 2084,
+        "cand_fp": 0,
+        "r1_tp": 2111,
+        "r1_fp": 2,
+        "delta_tpr_ci95": [
+          -0.017108023322438614,
+          -0.004761716096898349
+        ]
+      },
+      "0.005": {
+        "gained_tp": 41,
+        "lost_tp": 17,
+        "added_fp": 0,
+        "removed_fp": 0,
+        "mcnemar_exact_p_two_sided_malware": 0.0022325516199429235,
+        "cand_tp": 2223,
+        "cand_fp": 3,
+        "r1_tp": 2199,
+        "r1_fp": 3,
+        "delta_tpr_ci95": [
+          0.003628704201713345,
+          0.01581039689179962
+        ]
+      },
+      "0.01": {
+        "gained_tp": 35,
+        "lost_tp": 5,
+        "added_fp": 0,
+        "removed_fp": 1,
+        "mcnemar_exact_p_two_sided_malware": 1.382612026645802e-06,
+        "cand_tp": 2331,
+        "cand_fp": 3,
+        "r1_tp": 2301,
+        "r1_fp": 4,
+        "delta_tpr_ci95": [
+          0.006921612987191901,
+          0.016929292608585216
+        ]
+      },
+      "0.02": {
+        "gained_tp": 28,
+        "lost_tp": 2,
+        "added_fp": 0,
+        "removed_fp": 0,
+        "mcnemar_exact_p_two_sided_malware": 8.67992639541626e-07,
+        "cand_tp": 2392,
+        "cand_fp": 6,
+        "r1_tp": 2366,
+        "r1_fp": 6,
+        "delta_tpr_ci95": [
+          0.006052903229579722,
+          0.015053501929398406
+        ]
+      },
+      "0.05": {
+        "gained_tp": 19,
+        "lost_tp": 0,
+        "added_fp": 2,
+        "removed_fp": 0,
+        "mcnemar_exact_p_two_sided_malware": 3.814697265625e-06,
+        "cand_tp": 2454,
+        "cand_fp": 11,
+        "r1_tp": 2435,
+        "r1_fp": 9,
+        "delta_tpr_ci95": [
+          0.004371932262590114,
+          0.011125142169791078
+        ]
+      }
+    },
+    "benign_components": {
+      "gained_tp": 35,
+      "lost_tp": 5,
+      "added_fp": 0,
+      "removed_fp": 1,
+      "mcnemar_exact_p_two_sided_malware": 1.382612026645802e-06,
+      "n_benign": 1843,
+      "n_malicious": 2500,
+      "cand": {
+        "tp": 2331,
+        "fp": 0,
+        "tpr": 0.9324,
+        "fpr": 0.0
+      },
+      "R1": {
+        "tp": 2301,
+        "fp": 1,
+        "tpr": 0.9204,
+        "fpr": 0.0005425935973955507
+      },
+      "R2": {
+        "tp": 2052,
+        "fp": 0,
+        "tpr": 0.8208,
+        "fpr": 0.0
+      },
+      "delta_tpr_ci95_vs_R1": [
+        0.007022678045952283,
+        0.01731805818756199
+      ]
+    },
+    "benign_applications": {
+      "gained_tp": 35,
+      "lost_tp": 5,
+      "added_fp": 0,
+      "removed_fp": 0,
+      "mcnemar_exact_p_two_sided_malware": 1.382612026645802e-06,
+      "n_benign": 157,
+      "n_malicious": 2500,
+      "cand": {
+        "tp": 2331,
+        "fp": 3,
+        "tpr": 0.9324,
+        "fpr": 0.01910828025477707
+      },
+      "R1": {
+        "tp": 2301,
+        "fp": 3,
+        "tpr": 0.9204,
+        "fpr": 0.01910828025477707
+      },
+      "R2": {
+        "tp": 2052,
+        "fp": 1,
+        "tpr": 0.8208,
+        "fpr": 0.006369426751592357
+      },
+      "delta_tpr_ci95_vs_R1": [
+        0.0072172492539208325,
+        0.017227736723446893
+      ]
+    },
+    "bn_covered": {
+      "gained_tp": 35,
+      "lost_tp": 5,
+      "added_fp": 0,
+      "removed_fp": 1,
+      "mcnemar_exact_p_two_sided_malware": 1.382612026645802e-06,
+      "n_benign": 1555,
+      "n_malicious": 1794,
+      "cand": {
+        "tp": 1692,
+        "fp": 3,
+        "tpr": 0.9431438127090301,
+        "fpr": 0.0019292604501607716
+      },
+      "R1": {
+        "tp": 1662,
+        "fp": 4,
+        "tpr": 0.9264214046822743,
+        "fpr": 0.002572347266881029
+      },
+      "R2": {
+        "tp": 1459,
+        "fp": 1,
+        "tpr": 0.8132664437012264,
+        "fpr": 0.0006430868167202572
+      },
+      "delta_tpr_ci95_vs_R1": [
+        0.009982533257175023,
+        0.023849471192112292
+      ]
+    },
+    "by_ext": {
+      "cpl": {
+        "n_mal": 0,
+        "n_ben": 6,
+        "cand_tp": 0,
+        "r1_tp": 0,
+        "cand_fp": 0,
+        "r1_fp": 0
+      },
+      "dll": {
+        "n_mal": 126,
+        "n_ben": 1716,
+        "cand_tp": 98,
+        "r1_tp": 92,
+        "cand_fp": 0,
+        "r1_fp": 1
+      },
+      "exe": {
+        "n_mal": 2369,
+        "n_ben": 229,
+        "cand_tp": 2231,
+        "r1_tp": 2208,
+        "cand_fp": 3,
+        "r1_fp": 3
+      },
+      "ocx": {
+        "n_mal": 0,
+        "n_ben": 2,
+        "cand_tp": 0,
+        "r1_tp": 0,
+        "cand_fp": 0,
+        "r1_fp": 0
+      },
+      "scr": {
+        "n_mal": 0,
+        "n_ben": 4,
+        "cand_tp": 0,
+        "r1_tp": 0,
+        "cand_fp": 0,
+        "r1_fp": 0
+      },
+      "sys": {
+        "n_mal": 5,
+        "n_ben": 43,
+        "cand_tp": 2,
+        "r1_tp": 1,
+        "cand_fp": 0,
+        "r1_fp": 0
+      }
+    },
+    "by_month": {
+      "2026-01": {
+        "n_mal": 197,
+        "n_ben": 0,
+        "cand_tp": 183,
+        "r1_tp": 181,
+        "cand_fp": 0,
+        "r1_fp": 0
+      },
+      "2026-02": {
+        "n_mal": 243,
+        "n_ben": 0,
+        "cand_tp": 226,
+        "r1_tp": 223,
+        "cand_fp": 0,
+        "r1_fp": 0
+      },
+      "2026-03": {
+        "n_mal": 315,
+        "n_ben": 0,
+        "cand_tp": 282,
+        "r1_tp": 280,
+        "cand_fp": 0,
+        "r1_fp": 0
+      },
+      "2026-04": {
+        "n_mal": 262,
+        "n_ben": 0,
+        "cand_tp": 239,
+        "r1_tp": 237,
+        "cand_fp": 0,
+        "r1_fp": 0
+      },
+      "2026-05": {
+        "n_mal": 186,
+        "n_ben": 0,
+        "cand_tp": 172,
+        "r1_tp": 167,
+        "cand_fp": 0,
+        "r1_fp": 0
+      },
+      "2026-06": {
+        "n_mal": 149,
+        "n_ben": 0,
+        "cand_tp": 140,
+        "r1_tp": 136,
+        "cand_fp": 0,
+        "r1_fp": 0
+      },
+      "2026-07": {
+        "n_mal": 154,
+        "n_ben": 0,
+        "cand_tp": 146,
+        "r1_tp": 142,
+        "cand_fp": 0,
+        "r1_fp": 0
+      },
+      "2026-08": {
+        "n_mal": 217,
+        "n_ben": 0,
+        "cand_tp": 209,
+        "r1_tp": 207,
+        "cand_fp": 0,
+        "r1_fp": 0
+      },
+      "2026-09": {
+        "n_mal": 219,
+        "n_ben": 0,
+        "cand_tp": 200,
+        "r1_tp": 196,
+        "cand_fp": 0,
+        "r1_fp": 0
+      },
+      "2026-10": {
+        "n_mal": 448,
+        "n_ben": 0,
+        "cand_tp": 429,
+        "r1_tp": 428,
+        "cand_fp": 0,
+        "r1_fp": 0
+      },
+      "2026-11": {
+        "n_mal": 110,
+        "n_ben": 0,
+        "cand_tp": 105,
+        "r1_tp": 104,
+        "cand_fp": 0,
+        "r1_fp": 0
+      },
+      "benign": {
+        "n_mal": 0,
+        "n_ben": 2000,
+        "cand_tp": 0,
+        "r1_tp": 0,
+        "cand_fp": 3,
+        "r1_fp": 4
+      }
+    },
+    "pooled_v9_v10": {
+      "gained_tp": 43,
+      "lost_tp": 8,
+      "added_fp": 0,
+      "removed_fp": 1,
+      "mcnemar_exact_p_two_sided_malware": 6.867117736675254e-07,
+      "delta_tpr_ci95": [
+        0.006758659958481677,
+        0.015980908311706555
+      ],
+      "cand": {
+        "tp": 2872,
+        "fp": 5,
+        "tpr": 0.924066924066924,
+        "fpr": 0.001692047377326565
+      },
+      "R1": {
+        "tp": 2837,
+        "fp": 6,
+        "tpr": 0.9128056628056628,
+        "fpr": 0.0020304568527918783
+      }
+    },
+    "pooled_v8_v9_v10": {
+      "gained_tp": 49,
+      "lost_tp": 8,
+      "added_fp": 0,
+      "removed_fp": 1,
+      "mcnemar_exact_p_two_sided_malware": 2.716852566531091e-08,
+      "delta_tpr_ci95": [
+        0.007308153847795092,
+        0.01581181217576717
+      ],
+      "cand": {
+        "tp": 3279,
+        "fp": 5,
+        "tpr": 0.9234018586313715,
+        "fpr": 0.0015451174289245982
+      },
+      "R1": {
+        "tp": 3238,
+        "fp": 6,
+        "tpr": 0.9118558152633061,
+        "fpr": 0.001854140914709518
+      }
+    }
+  }
+}

@@ -1,5 +1,7 @@
 # Conclusions (evidence-based, fix.md M8)
 
+> **Note (2026-11-18):** this document covers the V1 pilot only. Later results: `docs/v3.2_results.md` (V3.2, the dashboard model until November 2026), `docs/v8_results.md`, `docs/v9_results.md` and `docs/v10_results.md` (the V8 blend now deployed in SA2 Scan).
+
 ## Hypothesis H1 — PE + BN beats PE-only (v2 structured BN, matched cohort n=50, test n=9)
 
 **Not supported** on the primary LightGBM comparator (small test; model collapsed to majority class). **Random Forest / Logistic Regression** on the same split show **perfect or near-perfect ROC-AUC** for PE, BN-only, and PE+BN — the cohort remains **too small and too easy** to show a reliable BN gain.

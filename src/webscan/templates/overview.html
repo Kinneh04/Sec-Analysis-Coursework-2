@@ -9,8 +9,8 @@
 <div class="kpis">
   {{ kpi('Files analysed', '{:,}'.format(st.total), 'file', 'accent', '+' ~ st.today ~ ' today', spark.total, 's1', url_for('submissions')) }}
   {{ kpi('Malicious', st.malicious, 'alert', 'red', ('%.0f%%' % (100 * st.malicious / st.total) if st.total else '0%') ~ ' of files', spark.malicious, 's4', url_for('submissions', verdict='malicious')) }}
-  {{ kpi('Borderline', st.borderline, 'eye', 'amber', '0.50 – ' ~ ('%.2f' % thr) ~ ', not flagged', spark.borderline, 's3', url_for('submissions', verdict='borderline')) }}
-  {{ kpi('Benign', st.benign, 'check', 'green', 'score below 0.50', spark.benign, 's2', url_for('submissions', verdict='benign')) }}
+  {{ kpi('Borderline', st.borderline, 'eye', 'amber', ('%.4f' % border) ~ ' – ' ~ ('%.4f' % thr) ~ ', not flagged', spark.borderline, 's3', url_for('submissions', verdict='borderline')) }}
+  {{ kpi('Benign', st.benign, 'check', 'green', 'score below ' ~ ('%.4f' % border), spark.benign, 's2', url_for('submissions', verdict='benign')) }}
   {{ kpi('Awaiting review', st.unreviewed, 'user', 'slate', 'flagged or borderline', None, 's1', url_for('submissions', disposition='unreviewed', sort='score')) }}
   {{ kpi('Analyst verdicts', st.confirmed ~ ' / ' ~ st.false_positives, 'user', 'slate', 'confirmed / false positive', None, 's1', url_for('submissions', disposition='false_positive')) }}
   {{ kpi('Sensors online', st.sensors_online ~ '<small> / ' ~ st.sensors_total ~ '</small>', 'sensor', 'slate',
@@ -50,16 +50,23 @@
   </section>
 
   <section class="card c5">
-    <div class="card-h"><h3>Engine agreement</h3><span class="sub">pe_v3 vs pe_v1s score per file</span></div>
+    <div class="card-h"><h3>Engine agreement</h3><span class="sub">V8 blend vs EMBER2024 alone, files with Binary Ninja features</span></div>
     <div class="card-b">
-      {% if corr.scatter %}{{ scatter(corr.scatter, thr, corr.thr_v1s, 'pe_v3 score (decides verdict)', 'pe_v1s score (baseline)') }}
+      {% if corr.scatter %}{{ scatter(corr.scatter, thr, thr, 'V8 blend score (decides verdict)', 'EMBER2024 score') }}
       <div class="statline">
         <span>Pearson r <b>{{ '%.2f' % corr.pearson if corr.pearson is not none else 'n/a' }}</b></span>
         <span>Same decision <b>{{ corr.agree }} / {{ corr.scatter | length }}</b></span>
       </div>
-      <p class="muted small" style="margin:8px 0 0">Points in the shaded corner are flagged by both engines. A high r means the engines share their mistakes too:
-        "2 / 2" is not two independent opinions.</p>
-      {% else %}{{ empty('chart', 'No scored files yet.') }}{% endif %}
+      {% else %}{{ empty('chart', 'No file has been scored with Binary Ninja features yet.') }}{% endif %}
+      <p class="muted small" style="margin:8px 0 0">Only files scored with Binary Ninja features are plotted ({{ corr.n_covered }}). On the {{ corr.n_fallback }} fallback file(s)
+        the blend is EMBER2024 itself, so the two scores are identical by construction and would inflate agreement.</p>
+      <div class="section-t" style="margin-top:14px">Decision paths</div>
+      {% if corr.paths %}{% set pmax = corr.paths | map(attribute=1) | max %}
+        {% for key, n in corr.paths %}
+          <div class="hbar"><span class="name" title="{{ REASONS.get(key, key) }}">{{ REASONS.get(key, key) }}</span>
+            <div class="track"><span class="{{ 'bg-green' if key == 'covered' else ('bg-slate' if key in ('legacy', 'none') else 'bg-amber') }}" style="width: {{ 100 * n / pmax }}%"></span></div><span class="v">{{ n }}</span></div>
+        {% endfor %}
+      {% else %}<p class="muted small" style="margin:0">No scored files yet.</p>{% endif %}
     </div>
   </section>
 

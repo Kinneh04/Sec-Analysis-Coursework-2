@@ -1,4 +1,5 @@
-"""Static scan of one quarantined file: V3.2 engines, SHAP explanation, PE details and context signals. Nothing is executed."""
+"""Static scan of one quarantined file: V8 blend + EMBER2024 engines, SHAP explanation, PE details and context signals.
+Nothing is executed. Scoring lives in src/v8/deploy.py; Binary Ninja (when reachable) in src/v8/bn_live.py."""
 
 from __future__ import annotations
 
@@ -11,16 +12,17 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
-import pandas as pd
 import pefile
 
 from src.common.winsig import signature_info
-from src.v3 import score
+from src.v8 import deploy
 from src.webscan import explain
 
-MODEL_TAG = "v3.2"
-REPORT_VERSION = 4
-CALIBRATION = Path("artifacts/deploy/calibration_temporal_benign.json")
+MODEL_TAG = deploy.MODEL_TAG  # "v8"
+REPORT_VERSION = 5  # 5: V8 blend + EMBER2024 engines (4 and older: V3.2)
+ENGINE_BLEND, ENGINE_R1 = deploy.ENGINE_BLEND, deploy.ENGINE_R1  # "v8_blend", "ember2024"
+SCALE_NOTE = ("Display score = sigmoid(blend margin + logit(thr_R1)): a monotone rescaling so one threshold fits every file; "
+              "equals EMBER2024's raw score when Binary Ninja features are unavailable. Not a calibrated probability.")
 _lock = threading.Lock()
 _bundle: dict[str, Any] | None = None
 _URL = re.compile(rb"https?://[\x21-\x7e]{4,200}")
@@ -30,23 +32,27 @@ _URL_NOISE = ("digicert.com", "verisign.com", "symcb.com", "symcd.com", "globals
 
 
 def bundle() -> dict[str, Any]:
+    """Frozen V8 bundle (candidate.pkl, R1 threshold, EMBER2024 booster). Downloads EMBER2024_PE.model on first use."""
     global _bundle
     with _lock:
         if _bundle is None:
-            _bundle = score.load_bundle(MODEL_TAG, verify=False)
+            _bundle = deploy.load_bundle(verify=True)
         return _bundle
 
 
 def thresholds() -> dict[str, dict[str, Any]]:
-    """D1: pe_v3 uses the deploy-calibrated threshold; pe_v1s keeps its frozen one."""
-    b = bundle()
-    cal = json.loads(CALIBRATION.read_text(encoding="utf-8"))
+    """Both engines use the frozen V8 thr_R1 (0.31491...). For v8_blend it applies on the display scale (see SCALE_NOTE)."""
+    t = float(bundle()["thr_r1"])
     return {
-        "pe_v3": {"threshold": float(cal["recommended_threshold"]), "source": "deploy_calibrated",
-                  "frozen": float(b["pe_v3"]["threshold"])},
-        "pe_v1s": {"threshold": float(b["pe_v1s"]["threshold"]), "source": "frozen",
-                   "frozen": float(b["pe_v1s"]["threshold"])},
+        ENGINE_BLEND: {"threshold": t, "source": "frozen", "frozen": t, "scale": "display"},
+        ENGINE_R1: {"threshold": t, "source": "frozen", "frozen": t, "scale": "probability"},
     }
+
+
+def freeze_status() -> dict[str, Any]:
+    """Deployed V8 files that differ from artifacts/v8/freeze/freeze_manifest.json (EOL-only code changes accepted)."""
+    bad = deploy.verify_freeze()
+    return {"bad": bad, "models_ok": not any("/models/" in b for b in bad)}
 
 
 def hashes(raw: bytes) -> dict[str, str]:
@@ -58,29 +64,34 @@ def is_pe(raw: bytes) -> bool:
     return raw[:2] == b"MZ"
 
 
-def engines(path: Path, pe: dict[str, Any] | None = None, top_k: int = 12) -> dict[str, Any] | None:
-    """None when the file is not a parseable PE."""
-    row = score._feature_row(path)
-    if row is None:
-        return None
+def engines(path: Path, pe: dict[str, Any] | None = None, top_k: int = 12, raw: bytes | None = None,
+            use_bn: bool | None = None) -> dict[str, Any] | None:
+    """Engine results, or {"error": reason} when the file could not be scored: "pe_parse_failed" (thrember's pefile parse
+    failed, not a PE) or "ember_failed:<Type>: <message>" (feature extraction raised)."""
     b, thr = bundle(), thresholds()
-    s = score.score_row(row, b)
-    out = []
-    for name in ("pe_v3", "pe_v1s"):
-        p = float(s[f"{name}_probability"])
-        t = thr[name]["threshold"]
-        out.append({"name": name, "model_tag": MODEL_TAG, "probability": p, "threshold": t,
-                    "threshold_source": thr[name]["source"], "frozen_threshold": thr[name]["frozen"],
-                    "flagged": p >= t, "recommended": name == "pe_v3"})
-    spec = b["pe_v3"]
-    frame = pd.DataFrame([row])
-    cols = [c for c in spec["cols"] if c in frame.columns]
-    contrib = spec["model"].predict(frame[cols], pred_contrib=True)[0]
+    s = deploy.score_file(path, b, raw=raw, use_bn=use_bn, contributions=True)
+    if "error" in s:
+        return {"error": s["error"]}
+    bn = s["bn"]
+    blend = {"name": ENGINE_BLEND, "model_tag": MODEL_TAG, "probability": s["probability"], "threshold": thr[ENGINE_BLEND]["threshold"],
+             "threshold_source": thr[ENGINE_BLEND]["source"], "frozen_threshold": thr[ENGINE_BLEND]["frozen"],
+             "flagged": s["decision"], "recommended": True,
+             "coverage": "covered" if s["covered"] else "uncovered", "decision_path": s["decision_path"],
+             "fallback_reason": None if s["covered"] else bn["reason"], "blend_margin": s["blend_margin"],
+             "r1_score": s["r1_score"], "r1_logit": s["r1_logit"], "bn_score": s["bn_score"], "bn_logit": s["bn_logit"],
+             "w": s["w"], "t_blend": s["t_blend"], "display_shift": s["display_shift"], "scale_note": SCALE_NOTE}
+    r1 = {"name": ENGINE_R1, "model_tag": "EMBER2024_PE", "probability": s["r1_score"], "threshold": thr[ENGINE_R1]["threshold"],
+          "threshold_source": thr[ENGINE_R1]["source"], "frozen_threshold": thr[ENGINE_R1]["frozen"],
+          "flagged": s["r1_score"] >= thr[ENGINE_R1]["threshold"], "recommended": False,
+          "coverage": "n/a", "r1_score": s["r1_score"]}
     pe = pe or {}
-    ctx = explain.build_context([x["name"] for x in pe.get("sections", [])], pe.get("imports", {}), pe.get("exports", []))
-    values = frame[cols].iloc[0]
-    exp = explain.reasons([(c, float(values[c]), float(v)) for c, v in zip(cols, contrib[:-1])], float(contrib[-1]), ctx, top_k)
-    return {"engines": out, "explanation": exp,
+    ctx = explain.build_context([x["name"] for x in pe.get("sections", [])], pe.get("imports", {}), pe.get("exports", []), raw=raw)
+    # Contributions are additive log-odds on the display scale: base + sum == logit(probability) of v8_blend.
+    exp = explain.reasons(s["contrib"], s["contrib_base"], ctx, top_k)
+    exp["base_parts"] = s["contrib_parts"]
+    path_note = {"path": s["decision_path"], "reason": bn["reason"], "note": bn["note"]}
+    bn_out = {k: bn[k] for k in ("covered", "reason", "note", "cap6_status", "hl6_status", "seconds", "url", "mode_enforced", "prep", "cached")}
+    return {"engines": [blend, r1], "explanation": exp, "decision_path": path_note, "bn": bn_out, "timings_ms": s["timings_ms"],
             "top_features": [{"feature": r["feature"], "contribution": r["contribution"]} for r in exp["top"]]}
 
 
@@ -194,11 +205,11 @@ def scan(path: Path) -> dict[str, Any]:
     t0 = time.perf_counter()
     raw = path.read_bytes()
     pe = pe_details(path, raw)
-    eng = engines(path, pe)
+    eng = engines(path, pe, raw=raw)
     report: dict[str, Any] = {"report_version": REPORT_VERSION, "pe": pe, "signals": explain.signals(pe, raw)}
-    if eng is None:
-        report.update(verdict="error", error="pe_parse_failed", engines=[], top_features=[], explanation={},
-                      flag_count=0, engine_count=0)
+    if eng is None or "error" in eng:
+        report.update(verdict="error", error=(eng or {}).get("error") or "pe_parse_failed", engines=[], top_features=[],
+                      explanation={}, flag_count=0, engine_count=0)
     else:
         flagged = [e for e in eng["engines"] if e["flagged"]]
         rec = next(e for e in eng["engines"] if e["recommended"])
@@ -211,9 +222,9 @@ def scan(path: Path) -> dict[str, Any]:
 if __name__ == "__main__":
     import sys
     rep = scan(Path(sys.argv[1]))
-    print(json.dumps({k: rep[k] for k in ("verdict", "probability", "scan_ms")}, indent=1))
+    print(json.dumps({k: rep.get(k) for k in ("verdict", "probability", "scan_ms", "error")}, indent=1))
     print(json.dumps(explain.assessment(rep, rep["signals"]), indent=1, ensure_ascii=True))
     for s in rep["signals"]:
         print(f"  [{s['severity']:8}] {s['title']} -- {s['evidence'][:90]}".encode("ascii", "replace").decode())
-    for r in rep["explanation"]["top"][:8]:
+    for r in (rep.get("explanation") or {}).get("top", [])[:8]:
         print(f"  {r['contribution']:+.3f} {r['strength']:8} {r['title'][:70]} = {r['value']} ({r['typical']})".encode("ascii", "replace").decode())
