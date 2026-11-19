@@ -277,7 +277,7 @@ def test_every_page_renders_with_blend_fallback_error_and_legacy(make):
     assert c.get(f"/file/{shas[4]}/json").get_json()["risk"] == "low"  # old 0.5 score is not compared with the new threshold
     assert "stub parser failure" in c.get(f"/file/{shas[3]}/json").get_data(as_text=True)
     model = c.get("/model").get_data(as_text=True)
-    assert "V10 replication" in model and "triage aid" in model and "1 of 7" in model
+    assert "V10 replication" in model and "How verdicts are made" in model
     settings = c.get("/settings").get_data(as_text=True)
     assert "Binary Ninja at scan time" in settings and "SA2_BN=0" in settings
     dash = c.get("/dashboard").get_data(as_text=True)
@@ -298,7 +298,6 @@ def test_model_page_numbers_come_from_result_files(make):
     assert v10["rule_met"] is True and ev["V9 replication"]["rule_met"] is False and ev["V8 blind"]["rule_met"] is True
     page = c.get("/model").get_data(as_text=True)
     assert "%+.2f" % (100 * v10["delta"]) in page and "%+.2f" % (100 * v10["delta_ci"][0]) in page
-    assert "gained %d detections and lost %d" % (v10["strict"]["gained_tp"], v10["strict"]["lost_tp"]) in page
 
 
 def test_main_exits_cleanly_without_model(monkeypatch, capsys):

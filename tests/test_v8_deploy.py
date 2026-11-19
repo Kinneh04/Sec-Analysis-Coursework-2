@@ -295,18 +295,19 @@ def test_bn_busy_while_another_process_holds_the_lock(bn_tmp, tmp_path):
     import subprocess
 
     lp = tmp_path / "bn.lock"
-    code = "import sys, time\nfrom src.v8.bn_live import BnLock\nprint(BnLock(sys.argv[1]).acquire(), flush=True)\ntime.sleep(60)\n"
+    code = "import os, sys, time\nfrom src.v8.bn_live import BnLock\nprint(BnLock(sys.argv[1]).acquire(), os.getpid(), flush=True)\ntime.sleep(60)\n"
     proc = subprocess.Popen([sys.executable, "-c", code, str(lp)], cwd=ROOT, stdout=subprocess.PIPE, text=True,
                             env={**os.environ, "PYTHONDONTWRITEBYTECODE": "1"})
     try:
-        assert proc.stdout.readline().strip() == "True"
+        acquired, child_pid = proc.stdout.readline().split()
+        assert acquired == "True"
         probed = []
         passes = {"cap6": lambda c, p: dict(OK_CAP), "hl6": lambda c, p: dict(OK_HL)}
         t = time.time()
         r = bn_live.extract(bn_tmp, "1" * 64, cfg(), probe_fn=lambda u, t: probed.append(u) or True, passes=passes,
                             connect=lambda u: object())
         assert r["reason"] == "bn_busy" and not r["covered"] and r["features"] is None
-        assert f"pid {proc.pid}" in r["note"] and "R1 decision used" in r["note"]
+        assert f"pid {child_pid}" in r["note"] and "R1 decision used" in r["note"]
         assert probed == [] and time.time() - t < 2  # no waiting, Binary Ninja not touched
     finally:
         proc.kill()  # the owner dies without releasing: the OS drops its lock

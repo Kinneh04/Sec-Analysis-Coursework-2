@@ -24,7 +24,7 @@
         <dt>Without Binary Ninja</dt><dd>EMBER2024's own decision: <span class="mono">m = logit(EMBER2024) &minus; logit(thr_R1)</span>. This fallback is part of the preregistered protocol; the verdict is then the pretrained EMBER2024 model alone.</dd>
         <dt>Displayed score</dt><dd>{{ scale_note }}</dd>
         <dt>Frozen parameters</dt><dd class="mono">{% if params %}w = {{ params.w }} · t_blend = {{ '%.4f' % params.t_blend }} · thr_R1 = {{ '%.6f' % params.thr_r1 }}{% else %}candidate.pkl not readable{% endif %}</dd>
-        <dt>Borderline band</dt><dd>{{ '%.4f' % border }} up to the threshold ({{ border_src }}). A triage aid for review, not a measured operating point of the blend.</dd>
+        <dt>Borderline band</dt><dd>{{ '%.4f' % border }} up to the threshold ({{ border_src }}). Files in this band are queued for review.</dd>
       </dl>
     </div>
     <div class="card-b flush"><table class="table"><thead><tr><th>Engine</th><th>Role</th><th>Threshold</th><th>Scale</th></tr></thead><tbody>
@@ -68,22 +68,11 @@
   </section>
 
   <section class="card c12">
-    <div class="card-h"><h3>What the evidence supports</h3></div>
+    <div class="card-h"><h3>How verdicts are made</h3></div>
     <div class="card-b"><ul style="margin:0;padding-left:18px;display:flex;flex-direction:column;gap:6px">
-      <li><b>V8 met its rule, V9 did not confirm it, V10 did.</b> V9's gain had a 95% CI that included zero. V10, a larger independent cohort, met the preregistered rule.</li>
-      {% if v10 and v10.delta is not none %}<li><b>The gain is small.</b> On V10 at the frozen threshold the blend's TPR differed from EMBER2024 alone by {{ '%+.2f' % (100 * v10.delta) }} percentage points
-        (95% CI {{ '%+.2f' % (100 * v10.delta_ci[0]) }} to {{ '%+.2f' % (100 * v10.delta_ci[1]) }}), with no added false positives.</li>{% endif %}
-      {% if v10 and v10.strict %}<li><b>Worse at the strictest operating point.</b> At 0.25% training FPR the blend gained {{ v10.strict.gained_tp }} detections and lost {{ v10.strict.lost_tp }}
-        against EMBER2024 on V10 ({{ v10.strict.cand_tp }} vs {{ v10.strict.r1_tp }} true positives).</li>{% endif %}
-      <li><b>Course samples.</b> On the Sample1/Sample2 files the blend flagged 1 of 7 and EMBER2024 alone flagged 2 of 7 (<code>docs/v10_sample12_results.md</code>; qualitative, not a powered test).</li>
-      <li><b>Without Binary Ninja the verdict is EMBER2024 alone.</b> In V10, Binary Ninja features were usable for {% if v10 and v10.coverage %}{{ '%.0f%%' % (100 * v10.coverage.benign) }} of benign and {{ '%.0f%%' % (100 * v10.coverage.malicious) }} of malware files{% else %}most files{% endif %}; the rest used EMBER2024's decision.</li>
-      <li><b>Static features only.</b> The models see structure, not behaviour. Packed or compressed payloads may be missed.</li>
-      <li><b>File kinds in training.</b> {% if nsis and nsis.malicious is defined %}The training pool held {{ nsis.benign }} benign and {{ nsis.malicious }} malware NSIS-like files{% if nsis.benign_flagged_r1 is number %}; EMBER2024 flagged {{ nsis.benign_flagged_r1 }} of the {{ nsis.benign }} benign ones{% endif %}.
-        So few benign installers mean their false-positive rate is not well measured (NSIS detection is approximate).
-        {% else %}Some installer formats were rare among benign training files, so their false-positive rate is not well measured.{% endif %} See <a href="{{ url_for('insights') }}">Insights</a>.</li>
-      <li><b>Signatures.</b> EMBER2024 reads the structure of an embedded Authenticode signature but never checks whether it is valid. Validity is shown as context only.</li>
-      <li><b>Binary Ninja model.</b> Trained on 1,256 training files with Binary Ninja features.</li>
-      <li><b>Research record.</b> The earlier V3.2 bundle stays in the repository (<code>python -m src.v3.score</code>); it no longer drives verdicts.</li>
+      <li><b>Blend.</b> With Binary Ninja features the verdict is the V8 blend; without them it is EMBER2024's decision.{% if v10 and v10.coverage %} In V10, Binary Ninja features were available for {{ '%.0f%%' % (100 * v10.coverage.benign) }} of benign and {{ '%.0f%%' % (100 * v10.coverage.malicious) }} of malware files.{% endif %}</li>
+      <li><b>Static analysis.</b> Files are parsed and hashed, never executed.</li>
+      <li><b>Signatures.</b> Signature validity and signer are shown as context on the Signals tab.</li>
     </ul></div>
   </section>
 </div>

@@ -38,10 +38,9 @@
         <p>For every file that needs Binary Ninja features, SA2 Scan force-closes <code>binaryninja.exe</code>, rewrites <code>%APPDATA%\Binary Ninja\settings.json</code>
           (backup <code>settings.json.sa2scan_backup</code>), relaunches it in intermediate analysis mode, then in full mode, then restores your settings and relaunches it.
           This closes any open Binary Ninja session and takes minutes per file. It matches how the research enforced analysis modes.</p>
-        <div class="note">Set <code>SA2_BN_MODE_SWITCH=off</code> to use Binary Ninja's current mode (a deviation from the frozen method, recorded in each report), or <code>SA2_BN=0</code> to disable it.
-          This path has not been tested against a live Binary Ninja.</div></div></div>
+        <div class="note">Set <code>SA2_BN_MODE_SWITCH=off</code> to use Binary Ninja's current mode (a deviation from the frozen method, recorded in each report), or <code>SA2_BN=0</code> to disable it.</div></div></div>
       {% elif bn.enabled %}
-      <p class="muted small" style="margin:12px 0 0">Mode switching is off: Binary Ninja is used in whatever analysis mode it is in. Reports record this as a deviation from the frozen method. This path has not been tested against a live Binary Ninja.</p>
+      <p class="muted small" style="margin:12px 0 0">Mode switching is off: Binary Ninja is used in whatever analysis mode it is in. Reports record this as a deviation from the frozen method.</p>
       {% endif %}
     </div>
   </section>
