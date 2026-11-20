@@ -21,10 +21,10 @@
     <div class="card-b">
       <dl class="kv">
         <dt>With Binary Ninja</dt><dd>Margin <span class="mono">m = logit(EMBER2024) + w &middot; logit(BN model) &minus; t_blend</span>. Malicious when m &ge; 0.</dd>
-        <dt>Without Binary Ninja</dt><dd>EMBER2024's own decision: <span class="mono">m = logit(EMBER2024) &minus; logit(thr_R1)</span>. This fallback is part of the preregistered protocol; the verdict is then the pretrained EMBER2024 model alone.</dd>
+        <dt>Without Binary Ninja</dt><dd>EMBER2024 decides alone: <span class="mono">m = logit(EMBER2024) &minus; logit(thr_R1)</span>.</dd>
         <dt>Displayed score</dt><dd>{{ scale_note }}</dd>
         <dt>Frozen parameters</dt><dd class="mono">{% if params %}w = {{ params.w }} · t_blend = {{ '%.4f' % params.t_blend }} · thr_R1 = {{ '%.6f' % params.thr_r1 }}{% else %}candidate.pkl not readable{% endif %}</dd>
-        <dt>Borderline band</dt><dd>{{ '%.4f' % border }} up to the threshold ({{ border_src }}). Files in this band are queued for review.</dd>
+        <dt>Borderline band</dt><dd>{{ '%.4f' % border }} up to the threshold are queued for review.</dd>
       </dl>
     </div>
     <div class="card-b flush"><table class="table"><thead><tr><th>Engine</th><th>Role</th><th>Threshold</th><th>Scale</th></tr></thead><tbody>
@@ -71,8 +71,6 @@
     <div class="card-h"><h3>How verdicts are made</h3></div>
     <div class="card-b"><ul style="margin:0;padding-left:18px;display:flex;flex-direction:column;gap:6px">
       <li><b>Blend.</b> With Binary Ninja features the verdict is the V8 blend; without them it is EMBER2024's decision.{% if v10 and v10.coverage %} In V10, Binary Ninja features were available for {{ '%.0f%%' % (100 * v10.coverage.benign) }} of benign and {{ '%.0f%%' % (100 * v10.coverage.malicious) }} of malware files.{% endif %}</li>
-      <li><b>Static analysis.</b> Files are parsed and hashed, never executed.</li>
-      <li><b>Signatures.</b> Signature validity and signer are shown as context on the Signals tab.</li>
     </ul></div>
   </section>
 </div>

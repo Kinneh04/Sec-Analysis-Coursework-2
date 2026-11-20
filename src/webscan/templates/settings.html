@@ -9,7 +9,7 @@
     <div class="card-b">
       <div class="keybox"><code id="api-key" data-secret="{{ api_key }}">••••••••••••••••••••••••</code>
         <button class="btn sm ghost" data-reveal="api-key">{{ icon('eye', 'sm') }}Show</button><button class="btn sm ghost" data-copy-from="api-key">{{ icon('copy', 'sm') }}Copy</button></div>
-      <p class="muted small">Rotate it on <a href="{{ url_for('sensors') }}">EDR sensors</a>. Every connected sensor then needs the new key.</p>
+      <p class="muted small">To change it, go to <a href="{{ url_for('sensors') }}">EDR sensors</a>.</p>
     </div>
   </section>
   <section class="card c6">
@@ -18,12 +18,11 @@
       <dl class="kv"><dt>Admin password</dt><dd>{{ 'Set by SA2_ADMIN_PASSWORD' if env_pw else 'Generated on first run, printed in the console window' }}</dd>
         <dt>Data folder</dt><dd class="mono small">{{ data_dir }}</dd><dt>Bind address</dt><dd class="mono">{{ base }}</dd></dl>
       <form method="post" style="margin-top:14px" onsubmit="return confirm('Re-analyse every stored file with the current model and explanation code?')">
-        <input type="hidden" name="action" value="rescan"><button class="btn sm">{{ icon('refresh', 'sm') }}Re-analyse all files</button>
-        <span class="muted small">Refreshes explanations after an update. Verdicts can change if the model files or Binary Ninja availability changed.</span></form>
+        <input type="hidden" name="action" value="rescan"><button class="btn sm">{{ icon('refresh', 'sm') }}Re-analyse all files</button></form>
     </div>
   </section>
   <section class="card c12">
-    <div class="card-h"><h3>Binary Ninja at scan time</h3><span class="sub">read-only · set by environment variables before starting the dashboard</span></div>
+    <div class="card-h"><h3>Binary Ninja at scan time</h3><span class="sub">set by environment variables</span></div>
     <div class="card-b">
       <dl class="kv">
         <dt>Enabled</dt><dd>{% if bn.enabled %}Yes{% else %}No (<code>SA2_BN=0</code>): every verdict is EMBER2024 alone{% endif %}</dd>
@@ -35,17 +34,15 @@
       </dl>
       {% if bn.enabled and bn.mode_switch == 'restart' %}
       <div class="vt-banner warn" style="margin-top:14px"><span class="ic">{{ icon('alert', 'lg') }}</span><div><h3>Each scan restarts Binary Ninja</h3>
-        <p>For every file that needs Binary Ninja features, SA2 Scan force-closes <code>binaryninja.exe</code>, rewrites <code>%APPDATA%\Binary Ninja\settings.json</code>
-          (backup <code>settings.json.sa2scan_backup</code>), relaunches it in intermediate analysis mode, then in full mode, then restores your settings and relaunches it.
-          This closes any open Binary Ninja session and takes minutes per file. It matches how the research enforced analysis modes.</p>
-        <div class="note">Set <code>SA2_BN_MODE_SWITCH=off</code> to use Binary Ninja's current mode (a deviation from the frozen method, recorded in each report), or <code>SA2_BN=0</code> to disable it.</div></div></div>
+        <p>This closes any open Binary Ninja window and takes a few minutes per file. Your Binary Ninja settings are restored afterwards.</p>
+        <div class="note">Set <code>SA2_BN_MODE_SWITCH=off</code> to skip the restart, or <code>SA2_BN=0</code> to turn Binary Ninja off.</div></div></div>
       {% elif bn.enabled %}
-      <p class="muted small" style="margin:12px 0 0">Mode switching is off: Binary Ninja is used in whatever analysis mode it is in. Reports record this as a deviation from the frozen method.</p>
+      <p class="muted small" style="margin:12px 0 0">Mode switching is off, so Binary Ninja runs in its current analysis mode.</p>
       {% endif %}
     </div>
   </section>
   <section class="card c12">
-    <div class="card-h"><h3>API reference</h3><span class="sub">header <code>X-API-Key</code> on every call; wrong or missing key → 401</span></div>
+    <div class="card-h"><h3>API reference</h3><span class="sub">send the <code>X-API-Key</code> header with every call</span></div>
     <div class="card-b flush"><table class="table"><thead><tr><th>Method</th><th>Path</th><th>Purpose</th></tr></thead><tbody>
       <tr><td><span class="tag">GET</span></td><td class="mono">/api/v1/ping</td><td>Connection test: server name, model tag (<code>v8</code>), deciding engine, thresholds.</td></tr>
       <tr><td><span class="tag">GET</span></td><td class="mono">/api/v1/files/&lt;sha256&gt;</td><td>Full report JSON (200) or 404. Poll until <code>status</code> is <code>done</code> or <code>error</code>. Includes <code>assessment</code>, <code>explanation</code> and <code>all_signals</code>.</td></tr>

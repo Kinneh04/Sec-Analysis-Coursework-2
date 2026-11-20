@@ -11,16 +11,14 @@
   <div class="box">
     <div class="mark">{{ mark() }}<span>SA2 SCAN</span></div>
     <div class="card"><div class="card-b" style="padding:24px">
-      <h2 style="font-size:17px;margin-bottom:4px">Sign in</h2>
-      <p class="muted" style="margin:0 0 18px;font-size:13px">Analyst access to submissions, reports and EDR sensors.</p>
+      <h2 style="font-size:17px;margin-bottom:16px">Sign in</h2>
       {% with msgs = get_flashed_messages(with_categories=true) %}{% for cat, m in msgs %}<div class="flash {{ cat }}">{{ m }}</div>{% endfor %}{% endwith %}
       <form method="post">
         <label>Password<input type="password" name="password" autofocus required autocomplete="current-password"></label>
         <button class="btn primary block">Sign in</button>
       </form>
     </div></div>
-    <p class="muted small center" style="margin-top:16px">The password is printed in the SA2 Scan console window at start-up, or set
-      <code>SA2_ADMIN_PASSWORD</code>. EDR sensors use the API key instead.</p>
+    <p class="muted small center" style="margin-top:16px">The password is shown in the SA2 Scan console window.</p>
   </div>
 </div>
 </body>

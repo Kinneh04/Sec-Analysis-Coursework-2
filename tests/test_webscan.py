@@ -111,10 +111,13 @@ def add_legacy(app, sha: str = "a" * 64) -> str:
     return sha
 
 
-def test_auth_ping_and_rejections(make):
+def test_auth_ping_and_rejections(make, tmp_path):
     app, c, key = make(stub_scan(0.01, covered=False, reason="bn_disabled"), login=False)
     assert c.get("/").status_code == 302 and "/login" in c.get("/").headers["Location"]
     assert c.post("/upload", data={"file": (io.BytesIO(fake_pe()), "a.exe")}).status_code == 302  # to login, not stored
+    assert "next=" not in c.post("/upload").headers["Location"]  # a POST target cannot be replayed as GET after login (405)
+    from src.edr.app import create_app as edr_app
+    assert app.config["SESSION_COOKIE_NAME"] != edr_app(tmp_path / "edr", start_agent=False).config["SESSION_COOKIE_NAME"]  # same host, ports share cookies
     assert app.config["DB"].val("SELECT COUNT(*) FROM files") == 0
     assert c.post("/login", data={"password": "wrong"}).status_code == 200
     assert c.get("/api/v1/ping").status_code == 401

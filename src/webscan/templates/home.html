@@ -4,8 +4,7 @@
 {% block page %}
 <section class="home">
   <div class="logo">{{ mark() }}<span>SA2&nbsp;SCAN</span></div>
-  <p class="tagline">Analyse suspicious Windows executables with the frozen SA2 V8 blend (EMBER2024 + Binary Ninja), and see <b>why</b> each verdict was reached.
-    Files are parsed, never executed.</p>
+  <p class="tagline">Upload a Windows program to check whether it is malicious and see why.</p>
 
   <div class="tabs" role="tablist">
     <button class="on" data-tab="t-file">File</button>
@@ -15,17 +14,9 @@
   <div id="t-file" class="tabpane on">
     <form id="upload-form" action="{{ url_for('upload') }}" method="post" enctype="multipart/form-data">
       <label class="drop" for="file-input">
-        <svg viewBox="0 0 120 100" width="120" height="100" aria-hidden="true">
-          <path d="M42 8h30l14 14v70H42z" fill="none" stroke="currentColor" stroke-width="2.5"/>
-          <path d="M72 8v14h14" fill="none" stroke="currentColor" stroke-width="2.5"/>
-          <path d="M14 36h92" stroke="var(--accent)" stroke-width="3.5"/>
-          <g fill="none" stroke="currentColor" stroke-width="1.8" opacity=".8">
-            <path d="M54 70c0-8 4.5-13 10-13s10 5 10 13"/><path d="M58 73c0-6 2.5-9.5 6-9.5s6 3.5 6 9.5"/>
-            <path d="M50 66c1-12 7-18 14-18s13 6 14 18"/><path d="M64 66v14"/></g>
-        </svg>
         <span class="btn" style="padding:9px 46px;font-size:14px">Choose file</span>
-        <span class="muted small">or drop it anywhere on this page · Windows PE (.exe, .dll, .sys) up to 50 MB</span>
-        <span class="muted small" id="upload-busy" hidden>Uploading and queuing for analysis…</span>
+        <span class="muted small">or drop it here · .exe, .dll or .sys, up to 50 MB</span>
+        <span class="muted small" id="upload-busy" hidden>Uploading…</span>
       </label>
       <input id="file-input" type="file" name="file" hidden>
     </form>
@@ -33,7 +24,7 @@
 
   <div id="t-search" class="tabpane">
     <form class="bigsearch" action="{{ url_for('search') }}" method="get">
-      <input type="text" name="q" placeholder="SHA-256, SHA-1, MD5, file name or imphash">
+      <input type="text" name="q" placeholder="Hash or file name">
       <button class="btn primary">Search</button>
     </form>
   </div>
@@ -44,11 +35,6 @@
     <a href="{{ url_for('submissions', disposition='unreviewed', sort='score') }}"><b class="amber">{{ stats.review }}</b>awaiting review</a>
     <a href="{{ url_for('sensors') }}"><b class="green">{{ stats.sensors }}</b>sensors online</a>
   </div>
-
-  <p class="note">Uploaded files are kept read-only in the local quarantine for static analysis and are never served back. Verdicts come from
-    machine-learning models, so read the reasoning before acting.</p>
-  <div class="banner">{{ icon('info', 'sm') }} Want to automate submissions? Connect an <b>SA2 Sentinel</b> EDR sensor or use the
-    <a href="{{ url_for('settings') }}">API</a>. Past results and correlations are on the <a href="{{ url_for('overview') }}">dashboard</a>.</div>
 </section>
 
 {% if recent %}

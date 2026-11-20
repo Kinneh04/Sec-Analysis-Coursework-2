@@ -30,7 +30,7 @@ def create_app(data_dir: Path | None = None, *, start_agent: bool = True) -> Fla
     if not db.setting("secret_key"):
         db.set_setting("secret_key", os.urandom(24).hex())
     app.secret_key = db.setting("secret_key")
-    app.config.update(AGENT=agent, SESSION_COOKIE_SAMESITE="Strict")
+    app.config.update(AGENT=agent, SESSION_COOKIE_SAMESITE="Strict", SESSION_COOKIE_NAME="sa2_sentinel_session")
 
     @app.before_request
     def guard():

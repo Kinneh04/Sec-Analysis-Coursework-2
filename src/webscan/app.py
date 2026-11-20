@@ -196,7 +196,8 @@ def create_app(data_dir: Path | None = None, *, start_worker: bool = True, scan_
     scan_fn = scan_fn or scanner.scan
 
     app = Flask(__name__)
-    app.config.update(MAX_CONTENT_LENGTH=MAX_BYTES + 1024 * 1024, SESSION_COOKIE_SAMESITE="Lax", DB=db)
+    app.config.update(MAX_CONTENT_LENGTH=MAX_BYTES + 1024 * 1024, SESSION_COOKIE_SAMESITE="Lax", DB=db,
+                      SESSION_COOKIE_NAME="sa2_scan_session", PERMANENT_SESSION_LIFETIME=timedelta(hours=1))  # own name: cookies ignore ports, Sentinel on :8001 would overwrite "session"
     for key, gen in (("secret_key", lambda: secrets.token_hex(32)), ("api_key", lambda: secrets.token_urlsafe(24)),
                      ("admin_password", lambda: secrets.token_urlsafe(9))):
         if not db.setting(key):
@@ -317,7 +318,8 @@ def create_app(data_dir: Path | None = None, *, start_worker: bool = True, scan_
         @wraps(fn)
         def inner(*a, **kw):
             if not session.get("admin"):
-                return redirect(url_for("login", next=request.full_path.rstrip("?")))
+                # only GETs can be replayed after login; a POST target (e.g. /upload) would 405
+                return redirect(url_for("login", next=request.full_path.rstrip("?") if request.method == "GET" else None))
             return fn(*a, **kw)
         return inner
 
@@ -340,6 +342,7 @@ def create_app(data_dir: Path | None = None, *, start_worker: bool = True, scan_
         if request.method == "POST":
             if hmac.compare_digest(request.form.get("password", ""), os.environ.get("SA2_ADMIN_PASSWORD") or db.setting("admin_password")):
                 session["admin"] = True
+                session.permanent = True  # 1 h, renewed on each page load
                 nxt = request.args.get("next", "")
                 return redirect(nxt if nxt.startswith("/") and not nxt.startswith("//") else url_for("home"))
             flash("Wrong password.", "error")

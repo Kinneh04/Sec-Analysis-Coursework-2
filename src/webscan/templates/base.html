@@ -11,7 +11,7 @@
 <header class="vt-top">
   <a class="mark" href="{{ url_for('home') }}" title="SA2 Scan home">{{ mark() }}<span>SA2 SCAN</span></a>
   <form class="vt-search" action="{{ url_for('search') }}" method="get" role="search">
-    {{ icon('search', 'sm') }}<input name="q" placeholder="File hash (SHA-256 / SHA-1 / MD5), file name or imphash"
+    {{ icon('search', 'sm') }}<input name="q" placeholder="Search by hash or file name"
       value="{{ request.args.get('q', '') if ep == 'search' else '' }}" aria-label="Search">
   </form>
   <nav class="vt-nav">
@@ -37,7 +37,6 @@
   {% block body %}{% endblock %}
   {% endblock %}
 </main>
-<div class="footer">SA2 Scan · static analysis only, files are never executed · ICT3214 coursework</div>
 <script src="{{ url_for('static', filename='app.js') }}"></script>
 </body>
 </html>

@@ -44,7 +44,6 @@
       <div class="vt-facts">
         <div><div class="k">Size</div><div class="v">{{ r.size | filesize }}</div></div>
         <div><div class="k">Last analysis</div><div class="v">{{ (r.last_seen or '')[:16].replace('T', ' ') }} UTC</div></div>
-        <div class="filetype">{{ 'DLL' if pe.is_dll else 'EXE' }}</div>
         <div><div class="k">First seen</div><div class="v">{{ ago(r.first_seen) }}</div></div>
         <div><div class="k">Submissions</div><div class="v">{{ r.submissions | length }}</div></div>
       </div>
@@ -68,7 +67,7 @@
   </section>
 
   {% if outcome == 'pending' %}
-  <section class="card"><div class="empty">{{ icon('clock') }}<div>This page refreshes automatically when the scan finishes: a few seconds, or several minutes when Binary Ninja runs.</div></div></section>
+  <section class="card"><div class="empty">{{ icon('clock') }}<div>Scanning. This page updates when it's done.</div></div></section>
   {% else %}
 
   {% if a %}
@@ -76,8 +75,7 @@
     <span class="ic">{{ icon({'good': 'check', 'warn': 'eye', 'bad': 'alert'}.get(a.tone, 'info'), 'lg') }}</span>
     <div><h3>{{ a.label }}</h3>
       {% set lead = (a.paragraphs or [a.summary]) | last %}{% if lead.startswith('Correlation: ') %}{% set lead = lead[13:14] | upper ~ lead[14:] %}{% endif %}
-      <p>{{ lead }}</p>
-      <div class="note">{{ a.note }} Full reasoning is in the DETECTION and REASONING tabs.</div></div>
+      <p>{{ lead }}</p></div>
   </div>
   {% endif %}
 
@@ -95,7 +93,7 @@
     <div class="stack">
       {% if a %}
       <div>
-        <div class="section-t">Analyst assessment <span class="sub">how the model's reasons line up with what else is known about the file</span></div>
+        <div class="section-t">Assessment</div>
         <div class="corr">{% for line in a.paragraphs or [a.summary] %}
           {% if line.startswith('Correlation: ') %}<p><b>Correlation.</b> {{ line[13:14] | upper }}{{ line[14:] }}</p>{% else %}<p>{{ line }}</p>{% endif %}{% endfor %}</div>
       </div>
@@ -111,10 +109,10 @@
       {% set b = v.blend if v.blend is mapping else {} %}
       {% if v.legacy %}
       <div class="vt-banner warn"><span class="ic">{{ icon('info', 'lg') }}</span><div><h3>Old report from the V3.2 model</h3>
-        <p>This report was produced before the switch to the V8 blend. Its score is on a different scale and is not compared with the current threshold. Press <b>Reanalyze</b> to score it with the current model.</p></div></div>
+        <p>Press <b>Reanalyze</b> to score it with the current model.</p></div></div>
       {% elif b %}
       <div>
-        <div class="section-t">Decision path <span class="sub">which model produced the verdict</span></div>
+        <div class="section-t">Decision path</div>
         <div class="card"><div class="card-b">
           <dl class="kv">
             <dt>Path</dt><dd>{% if b.coverage == 'covered' %}<span class="pill good">V8 blend</span> EMBER2024 + Binary Ninja model
@@ -137,18 +135,17 @@
       {% if v.disagree %}
       <div class="vt-banner warn"><span class="ic">{{ icon('eye', 'lg') }}</span><div><h3>The engines disagree</h3>
         <p>The V8 blend says <b>{{ 'malicious' if b.flagged else 'not malicious' }}</b>; EMBER2024 alone says <b>{{ 'malicious' if v.r1.flagged else 'not malicious' }}</b>.
-          {% set dis = a.disagreement if a and a.disagreement else none %}{% if dis %}{{ dis.text }}{% endif %}
-          The blend decides the verdict; review the file with both in mind.</p></div></div>
+          {% set dis = a.disagreement if a and a.disagreement else none %}{% if dis %}{{ dis.text }}{% endif %}</p></div></div>
       {% endif %}
       {% endif %}
 
       <div>
-        <div class="section-t">Engines <span class="sub">{% if v.legacy %}V3.2 engines (old report){% else %}verdict decided by the V8 blend{% if b and b.coverage != 'covered' %} · both engines are EMBER2024 on this file{% endif %}{% endif %}</span></div>
+        <div class="section-t">Engines {% if b and b.coverage != 'covered' %}<span class="sub">both engines are EMBER2024 on this file</span>{% endif %}</div>
         <div class="engines">
           {% for e in r.engines or [] %}
           <div class="eng">
             <div class="name">{{ ENGINE_LABELS.get(e.name, e.name) }}<small>{% if e.name == ENGINE_BLEND %}decides the verdict · {{ 'EMBER2024 + Binary Ninja' if e.coverage == 'covered' else 'EMBER2024 fallback' }}
-              {% elif e.name == ENGINE_R1 %}pretrained EMBER2024 alone · comparison{% else %}{{ 'decided the verdict' if e.recommended else 'baseline' }} · {{ e.model_tag }}{% endif %}</small></div>
+              {% elif e.name == ENGINE_R1 %}for comparison{% else %}{{ 'decided the verdict' if e.recommended else 'baseline' }} · {{ e.model_tag }}{% endif %}</small></div>
             <div class="res {{ 'flag' if e.flagged else 'ok' }}">{{ icon('alert' if e.flagged else 'check', 'sm') }}{{ 'Malicious' if e.flagged else 'Undetected' }}</div>
             {% if v.legacy %}<div class="muted small" style="grid-column:1/-1">score {{ '%.4f' % e.probability if e.probability is number else '–' }} (old scale)</div>
             {% else %}{{ meter(e.probability, 'high' if e.flagged else ('elevated' if (e.probability or 0) >= border else 'low')) }}{% endif %}
@@ -161,7 +158,7 @@
       {% set keyobs = (r.all_signals or []) | rejectattr('severity', 'equalto', 'info') | list %}
       {% if keyobs %}
       <div>
-        <div class="section-t">Key observations <span class="sub">see SIGNALS for what each one means</span></div>
+        <div class="section-t">Key observations</div>
         <div class="card"><div class="card-b flush"><table class="table compact"><tbody>
           {% for s in keyobs[:6] %}<tr><td style="width:110px"><span class="tag {{ s.severity }}">{{ s.severity }}</span></td><td><b>{{ s.title }}</b>
             <div class="muted small mono">{{ s.evidence | truncate(110) }}</div></td></tr>{% endfor %}
@@ -175,12 +172,12 @@
   <div id="t-reasoning" class="tabpane">
     <div class="stack">
       <div class="card">
-        <div class="card-h"><h3>Score breakdown</h3><span class="sub">how each factor group moved the verdict score (SHAP, log-odds on the display scale)</span></div>
+        <div class="card-h"><h3>Score breakdown</h3><span class="sub">how each part of the file moved the score</span></div>
         <div class="card-b">
           {% if exp.groups %}
           {% set mx = exp.groups | map(attribute='contribution') | map('abs') | max %}
           <div class="waterfall">
-            <div class="wf"><div class="name">Average file<small>starting point before looking at this file</small></div><div></div>
+            <div class="wf"><div class="name">Average file<small>starting score</small></div><div></div>
               <div class="v">{{ '%.3f' % exp.base_probability if exp.base_probability is number else '–' }}</div></div>
             {% for g in exp.groups if (g.contribution | abs) >= 0.005 %}{% set w = 50 * (g.contribution | abs) / (mx or 1) %}{% set gdesc = (GROUPS.get(g.group) or (g.label, ''))[1] %}
             <div class="wf" title="{{ gdesc }}">
@@ -198,7 +195,7 @@
       </div>
 
       <div class="card">
-        <div class="card-h"><h3>Top reasons</h3><span class="sub">the model's strongest drivers, compared with typical training files</span>
+        <div class="card-h"><h3>Top reasons</h3>
           <div class="actions"><a class="btn sm quiet" href="{{ url_for('glossary') }}#reasons">How to read this</a></div></div>
         <div class="card-b flush reasons">
           {% set mx = (exp.top or [{'contribution': 1}]) | map(attribute='contribution') | map('abs') | max %}
@@ -223,14 +220,14 @@
 
   {# ---------------- SIGNALS ---------------- #}
   <div id="t-signals" class="tabpane">
-    <div class="section-t">Context signals <span class="sub">facts about the file the model does not weigh directly · <a href="{{ url_for('glossary') }}">all signals explained</a></span></div>
+    <div class="section-t">Signals <span class="sub"><a href="{{ url_for('glossary') }}">What do these mean?</a></span></div>
     <div class="signals">
     {% for s in r.all_signals %}
       <div class="signal {{ s.severity }}">
         <div class="st">{{ s.title }}<span class="sev tag {{ s.severity }}">{{ s.severity }}</span></div>
         <div class="ev">{{ s.evidence }}</div>
-        <div class="mean"><b>What this means:</b> {{ s.meaning }}</div>
-        {% if s.model_bias %}<div class="bias">{{ icon('alert', 'sm') }} Known model bias: treat this format's score with caution.</div>{% endif %}
+        <div class="mean">{{ s.meaning }}</div>
+        {% if s.model_bias %}<div class="bias">{{ icon('alert', 'sm') }} The model is known to over-score this file type.</div>{% endif %}
       </div>
     {% else %}{{ empty('info', 'No context signals.') }}{% endfor %}
     </div>
@@ -249,7 +246,7 @@
           <dt>Signer</dt><dd>{{ sig.signer or '–' }}</dd><dt>Issuer</dt><dd>{{ sig.issuer or '–' }}</dd>
           {% for k, v in vi.items() %}<dt>{{ k }}</dt><dd>{{ v }}</dd>{% endfor %}</dl></div></section>
       <section class="card c6"><div class="card-h"><h3>Portable Executable info</h3></div><div class="card-b">
-        <dl class="kv"><dt>Compilation time</dt><dd>{{ (pe.timestamp or '')[:19].replace('T', ' ') }} <span class="muted">(header field)</span></dd>
+        <dl class="kv"><dt>Compilation time</dt><dd>{{ (pe.timestamp or '')[:19].replace('T', ' ') }}</dd>
           <dt>Subsystem</dt><dd>{{ pe.subsystem }}</dd><dt>Entry point</dt><dd class="mono">{{ pe.entry_point }}</dd>
           <dt>Image base</dt><dd class="mono">{{ pe.image_base }}</dd><dt>Linker</dt><dd>{{ pe.linker }}</dd>
           <dt>Mitigations</dt><dd>ASLR {{ '✓' if pe.aslr else '✗' }} · DEP {{ '✓' if pe.dep else '✗' }} · CFG {{ '✓' if pe.cfg else '✗' }}</dd>
@@ -258,7 +255,7 @@
       <section class="card c6"><div class="card-h"><h3>Resources, URLs, exports</h3></div><div class="card-b">
         <div class="chips" style="margin-bottom:12px">{% for x in pe.resources or [] %}<span class="tag">{{ x.type }} × {{ x.count }}</span>{% else %}<span class="muted">No resources.</span>{% endfor %}</div>
         <div class="section-t">URLs ({{ (pe.urls or []) | length }})</div>
-        {% for u in pe.urls or [] %}<div class="mono small break">{{ u }}</div>{% else %}<span class="muted small">None found (certificate URLs are ignored).</span>{% endfor %}
+        {% for u in pe.urls or [] %}<div class="mono small break">{{ u }}</div>{% else %}<span class="muted small">None found.</span>{% endfor %}
         <div class="section-t" style="margin-top:12px">Exports ({{ (pe.exports or []) | length }})</div>
         <div class="mono small break">{{ (pe.exports or [])[:40] | join(', ') or '–' }}</div></div></section>
       <section class="card c12"><div class="card-h"><h3>Sections</h3><span class="sub">▶ marks where execution starts</span></div>
@@ -271,7 +268,7 @@
                 <span class="mono small">{{ '%.2f' % s.entropy }}</span></div></td>
               <td class="mono">{{ s.flags }}{% if s.rwx %} <span class="tag high">RWX</span>{% endif %}</td></tr>
           {% endfor %}</tbody></table></div></section>
-      <section class="card c12"><div class="card-h"><h3>Imports</h3><span class="sub">{{ (pe.imports or {}) | length }} DLLs · highlighted functions belong to a capability group</span></div>
+      <section class="card c12"><div class="card-h"><h3>Imports</h3><span class="sub">{{ (pe.imports or {}) | length }} DLLs</span></div>
         <div class="card-b">
           {% for dll, fns in (pe.imports or {}).items() %}
             {% set hits = fns | map('lower') | select('in', NOTABLE) | list %}
