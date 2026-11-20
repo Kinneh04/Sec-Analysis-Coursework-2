@@ -45,8 +45,9 @@ In the largest round, 3 of 2,000 harmless files were wrongly flagged (0.15%). Th
    - **Reasoning tab:** the factors that raised or lowered the score, in plain English.
    - **Signals tab:** facts such as whether the file is digitally signed, how it was packaged, and where it came from.
    - Reports can be exported as PDF, CSV or JSON.
-4. **Record a decision.** Mark the file confirmed malicious, false positive or benign. This keeps the analyst's judgement on record and does not change the model's verdict.
-5. **Review history.** The **Dashboard** page shows detections over time, files awaiting review and how often the two inspectors agree. The **Model** page shows the test results above.
+4. **Delete if needed.** The **Delete** button on a report removes the file's record, its submissions, its stored copy and its cached analysis from the database (it asks for confirmation). Submitting the same file again scans it afresh.
+5. **Record a decision.** Mark the file confirmed malicious, false positive or benign. This keeps the analyst's judgement on record and does not change the model's verdict.
+6. **Review history.** The **Dashboard** page shows detections over time, files awaiting review and how often the two inspectors agree. The **Model** page shows the test results above.
 
 ## Using SA2 Sentinel (IT operations)
 
@@ -61,10 +62,15 @@ In the largest round, 3 of 2,000 harmless files were wrongly flagged (0.15%). Th
 - Programs that start running (ignoring those in Windows and Program Files).
 - Programs that connect to the internet on unusual ports.
 - Files that appear in the Downloads, Temp and AppData folders.
+- Local web servers (for example `python -m http.server`): Sentinel reads the server's file listing and downloads every `.exe`, `.dll`, `.sys`, `.scr`, `.ocx` and `.cpl` it offers, exactly as a browser would. These files are sent to SA2 Scan automatically in any mode, within about 5 seconds of being hosted. Extra server ports can be added in Settings.
 
 **What makes a file worth sending (Rules mode):** it sits in a user-writable folder, it was downloaded from the internet, it has no valid digital signature, its program connects out on an unusual port, or it is on the analyst's watchlist. Two or more of these (the watchlist counts double) triggers an upload.
 
-**What Sentinel does not do:** it does not read network traffic or extract files from it. It notices files once they are on the computer's disk. It does not run, delete or block anything.
+**Notifications.** Whenever Sentinel sends a file to SA2 Scan, Windows shows a notification at the bottom right. Clicking it opens that file's report in the browser. It can be switched off in Settings.
+
+**Try it:** run `python -m http.server 9000` in a folder containing an `.exe` or `.dll`. A notification appears within seconds.
+
+**What Sentinel does not do:** it does not capture network packets, so it cannot see files from other machines' servers or from encrypted (HTTPS) traffic; it finds files on web servers running on the same computer. It does not run, delete or block anything.
 
 ## Safety and data handling
 
@@ -172,7 +178,7 @@ Settings are stored in `artifacts/edr/edr.db`. The console binds to `127.0.0.1` 
 | `SA2_BN_MCP_URL` | MCP endpoint (default `http://127.0.0.1:24642/mcp`) |
 | `SA2_BN_PROBE_TIMEOUT` / `SA2_BN_CONNECT_TIMEOUT` | Probe (default 1 s) and session-open (default 30 s) timeouts |
 | `SA2_BN_LOCK` | Lock-file path (default `sa2scan_bn.lock` in temp) |
-| `SA2_BN_MODE_SWITCH` | `restart` (default): restart Binary Ninja in the mode each pass needs. `off`: use its current mode; recorded in the report |
+| `SA2_BN_MODE_SWITCH` | `off` (default): Binary Ninja stays open and is used in its current analysis mode (leave it in `full`); recorded in the report. `restart`: close and relaunch Binary Ninja in the mode each pass needs, as the research did |
 | `SA2_BN_EXE`, `SA2_UPX` | Paths to `binaryninja.exe` and `upx.exe` |
 | `SA2_EMBER_DOWNLOAD=0` | Verify the model only; never download |
 | `SA2_NO_BROWSER=1`, `SA2_NO_PAUSE=1` | Setup scripts do not open a browser / pause on error |
@@ -180,7 +186,7 @@ Settings are stored in `artifacts/edr/edr.db`. The console binds to `127.0.0.1` 
 
 ## Binary Ninja
 
-With the default `restart` mode, each scan that needs Binary Ninja closes `binaryninja.exe`, rewrites `%APPDATA%\Binary Ninja\settings.json` (backup `settings.json.sa2scan_backup`), relaunches in intermediate mode, then full mode, then restores the settings. Save your work first; expect minutes per file. If SA2 Scan stops mid-scan, the next start restores the backup. One process at a time uses Binary Ninja, enforced by a lock file; a second process scores with EMBER2024 and reports `bn_busy`. Files over 16 MB after overlay stripping are scored by EMBER2024; UPX files are unpacked with `upx -d` first.
+By default (`SA2_BN_MODE_SWITCH=off`) Binary Ninja stays open and every scan runs through its MCP connection in whatever analysis mode it is in; keep it in `full` (its default). Reports note that the research's per-pass analysis modes were not enforced. With `SA2_BN_MODE_SWITCH=restart`, each scan closes `binaryninja.exe`, rewrites `%APPDATA%\Binary Ninja\settings.json` (backup `settings.json.sa2scan_backup`), relaunches in intermediate mode, then full mode, then restores the settings; save your work first and expect minutes per file. If SA2 Scan stops mid-scan in that mode, the next start restores the backup. One process at a time uses Binary Ninja, enforced by a lock file; a second process scores with EMBER2024 and reports `bn_busy`. Files over 16 MB after overlay stripping are scored by EMBER2024; UPX files are unpacked with `upx -d` first.
 
 ## Command line
 

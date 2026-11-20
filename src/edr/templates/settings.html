@@ -43,6 +43,9 @@
     <div class="form-grid">
       <label>Poll interval (s)<input name="poll_seconds" type="number" step="0.5" min="0.5" value="{{ f.poll_seconds }}"></label>
       <label>Max file size (MB)<input name="max_mb" type="number" min="1" value="{{ f.max_mb }}"></label>
+      <label class="check"><input type="checkbox" name="http_watch" {{ 'checked' if f.http_watch == '1' }}> Scan PE files offered by local HTTP servers (e.g. <code>python -m http.server</code>)</label>
+      <label class="check"><input type="checkbox" name="notify" {{ 'checked' if f.notify == '1' }}> Windows notification when a file is sent (click opens its report)</label>
+      <label class="span2">Extra HTTP server ports to watch (besides <code>python -m http.server</code>; e.g. 8080 9000)<input name="http_ports" value="{{ f.http_ports }}"></label>
       <label class="span2">Watched folders (new PE files, top level, one per line; %VARS% allowed)<textarea name="watch_dirs" rows="4">{{ f.watch_dirs }}</textarea></label>
     </div>
     <div class="rules">{% for r in rules_all %}

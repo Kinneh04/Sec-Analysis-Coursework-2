@@ -576,6 +576,25 @@ def create_app(data_dir: Path | None = None, *, start_worker: bool = True, scan_
         flash(f"Disposition set to {DISPOSITIONS[d]}.", "ok")
         return redirect(request.referrer or url_for("report", sha=sha))
 
+    @app.post("/file/<sha>/delete")
+    @login_required
+    def delete_file(sha: str):
+        """Remove a file from the database: its record, submissions, quarantined copy and Binary Ninja cache."""
+        sha = sha.lower()
+        if not db.one("SELECT 1 FROM files WHERE sha256=?", (sha,)):
+            abort(404)
+        db.x("DELETE FROM submissions WHERE sha256=?", (sha,))
+        db.x("DELETE FROM files WHERE sha256=?", (sha,))
+        from src.v8 import bn_live
+        for p in [qdir / sha, *bn_live.CACHE_DIR.glob(f"*/{sha}.json")]:
+            try:
+                os.chmod(p, stat.S_IWRITE)  # quarantined files are read-only
+                p.unlink()
+            except OSError:
+                pass
+        flash(f"Deleted {sha[:12]}… from the database. Submitting the file again scans it afresh.", "ok")
+        return redirect(url_for("submissions"))
+
     @app.post("/file/<sha>/reanalyse")
     @login_required
     def reanalyse(sha: str):

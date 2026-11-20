@@ -8,6 +8,7 @@ from __future__ import annotations
 import ctypes
 import json
 import os
+import re
 import socket
 import statistics
 import threading
@@ -23,11 +24,12 @@ import psutil
 from src.common.hashing import sha256_file
 from src.common.sqlite_db import DB
 from src.common.winsig import signature_status
-from src.edr import rules
+from src.edr import httpwatch, notify, rules
 from src.edr.client import Client
 
 AGENT_VERSION = "1.0.0"
 HEARTBEAT_SECONDS = 30
+HTTP_PROBE_SECONDS = 5
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS settings(key TEXT PRIMARY KEY, value TEXT);
 CREATE TABLE IF NOT EXISTS processes(pid INTEGER, create_time REAL, name TEXT, exe TEXT, ppid INTEGER, parent TEXT,
@@ -69,6 +71,7 @@ def default_settings() -> dict[str, str]:
         "auto_submit": "1",
         # Safe default: only files explicitly on the allowlist are transported until the analyst switches to "rules".
         "submit_mode": "allowlist", "allowlist": "", "watchlist": "",
+        "http_watch": "1", "http_ports": "", "notify": "1",
         "poll_seconds": "2", "max_mb": "50", "watch_dirs": "\n".join(str(d) for d in dirs if d),
         "rules_enabled": ",".join(rules.RULES),
     }
@@ -91,6 +94,10 @@ class Agent:
         self._seen_files: dict[str, tuple] = {}
         self._hash_cache: dict[tuple, str] = {}
         self._remote: dict[int, set[tuple[str, int]]] = {}
+        self.cache = Path(data_dir) / "http_cache"
+        self._http_stamp: dict[str, tuple] = {}
+        self._http_probed: dict[int, float] = {}
+        self._http_pid: dict[int, int] = {}
         self._baseline = True
         self._last_purge = 0.0
         self._threads: list[threading.Thread] = []
@@ -162,7 +169,8 @@ class Agent:
                 return None
         return self._hash_cache[key], st.st_size
 
-    def consider(self, path: str, origin: str, cfg: dict[str, str], proc: dict | None = None, force: bool = False) -> str | None:
+    def consider(self, path: str, origin: str, cfg: dict[str, str], proc: dict | None = None, force: bool = False,
+                 extra: dict | None = None) -> str | None:
         """Hash + rules for one file; marks it pending for upload when policy says so. Returns sha256."""
         try:
             if os.path.getsize(path) > float(cfg.get("max_mb", "50")) * 1024 * 1024:
@@ -192,6 +200,7 @@ class Agent:
             want = allowed or rules.score(hits) >= rules.CANDIDATE_SCORE
         meta = {"origin": origin, "exe_path": path, "rules": hits, "motw": motw,
                 "remote": [f"{ip}:{port}" for ip, port in remote], "allowlisted": allowed}
+        meta.update(extra or {})
         if proc:
             meta.update(process=proc.get("name"), pid=proc.get("pid"), parent=proc.get("parent"), user=proc.get("username"))
         t = now()
@@ -211,7 +220,7 @@ class Agent:
                 self.bump(f"rule_{h}")
             self.db.x("UPDATE binaries SET last_seen=?, path=?, rules=?, meta_json=? WHERE sha256=?",
                       (t, path, ",".join(merged), json.dumps({**meta, "rules": merged}), sha))
-        if (want or force) and cfg.get("auto_submit") == "1" and row["state"] in ("recorded", "error"):
+        if (want or force) and cfg.get("auto_submit") == "1" and row["state"] in (("recorded", "error", "done") if force else ("recorded", "error")):
             self.db.x("UPDATE binaries SET state='pending', last_error=NULL WHERE sha256=?", (sha,))
             self.bump("candidates")
             self.wake_submit.set()
@@ -268,6 +277,7 @@ class Agent:
         self._seen_conns = live_c
         self._remote = {pid: r for pid, r in self._remote.items() if pid in procs}
         self.bump("connections_observed", n_new)
+        self.http_scan(conns, cfg)
 
         n_files = 0
         for d in filter(None, (x.strip() for x in cfg["watch_dirs"].splitlines())):
@@ -304,6 +314,41 @@ class Agent:
             self.db.x("DELETE FROM connections WHERE at < ?", (cutoff.isoformat(timespec="seconds"),))
             self.db.x("DELETE FROM processes WHERE first_seen < ?", (cutoff.isoformat(timespec="seconds"),))
             self._last_purge = time.time()
+
+    def http_scan(self, conns: list, cfg: dict[str, str]) -> None:
+        """Probe local HTTP servers (python -m http.server, plus any port in `http_ports`) and scan the PE files they offer."""
+        if cfg.get("http_watch") != "1":
+            return
+        extra = {int(p) for p in re.findall(r"\d+", cfg.get("http_ports", ""))}
+        servers: dict[int, str] = {}
+        pids: dict[int, int] = {}
+        for c in conns:
+            if c.status != psutil.CONN_LISTEN or not c.pid or c.laddr.port in servers:
+                continue
+            try:
+                cmd = psutil.Process(c.pid).cmdline()
+            except (psutil.Error, OSError):
+                cmd = []
+            if c.laddr.port in extra or httpwatch.is_http_server(cmd):
+                servers[c.laddr.port], pids[c.laddr.port] = c.laddr.ip, c.pid
+        for port, ip in servers.items():
+            if self._http_pid.get(port) != pids[port]:  # a new server on this port: its files count as new again
+                self._http_pid[port] = pids[port]
+                self._http_stamp = {u: s for u, s in self._http_stamp.items() if f":{port}/" not in u}
+                self._http_probed.pop(port, None)
+            if time.time() - self._http_probed.get(port, 0) < HTTP_PROBE_SECONDS:
+                continue
+            self._http_probed[port] = time.time()
+            for url in httpwatch.list_pe_urls(httpwatch.base_url(ip, port)):
+                st = httpwatch.stamp(url)
+                if st is None or self._http_stamp.get(url) == st:
+                    continue
+                self._http_stamp[url] = st
+                got = httpwatch.fetch(url, self.cache, int(float(cfg.get("max_mb", "50")) * 1024 * 1024))
+                if got is None:
+                    continue
+                self.bump("http_files")
+                self.consider(str(got[0]), "http", cfg, force=True, extra={"url": url, "server_port": port})
 
     # ---------- submission ----------
     def _set_conn(self, state: str, detail: str = "", **kw: Any) -> None:
@@ -342,6 +387,15 @@ class Agent:
                       t if benign else None, "auto: benign verdict" if benign else None)):
             self.bump("alerts_created")
 
+    def _notify(self, b: Any, what: str, cfg: dict[str, str]) -> None:
+        """Windows toast; clicking it opens the file's report on the dashboard."""
+        if cfg.get("notify") != "1":
+            return
+        meta = json.loads(b["meta_json"] or "{}")
+        src = meta.get("url") or b["path"]
+        notify.toast(f"SA2 Sentinel: {Path(b['path']).name}", f"{what} ({b['origin']}: {src})",
+                     f"{cfg['dashboard_url'].rstrip('/')}/file/{b['sha256']}")
+
     def submit_once(self) -> None:
         cfg = self.cfg()
         cl = self.client(cfg)
@@ -356,6 +410,7 @@ class Agent:
                     return
                 if st == 200:
                     self.bump("upload_dedup")
+                    self._notify(b, f"already scanned by SA2 Scan{': ' + str(rep['verdict']) if rep and rep.get('verdict') else ''}", cfg)
                     self.db.x("UPDATE binaries SET state='queued', submitted_at=? WHERE sha256=?", (now(), b["sha256"]))
                     continue
                 hs = self._hash(b["path"])
@@ -368,6 +423,7 @@ class Agent:
                 if st == 202:
                     self.db.x("UPDATE binaries SET state='queued', submitted_at=? WHERE sha256=?", (now(), b["sha256"]))
                     self.bump("uploads_sent")
+                    self._notify(b, "sent to SA2 Scan for analysis", cfg)
                 else:
                     err = (js or {}).get("error", f"HTTP {st}")
                     self.db.x("UPDATE binaries SET state='error', last_error=? WHERE sha256=?", (err, b["sha256"]))

@@ -344,3 +344,19 @@ def test_real_engine_on_benign_pe(tmp_path, monkeypatch):
     assert rep["verdict"] == "benign" and rep["engine_count"] == 2 and rep["decision_path"]["reason"] == "bn_disabled"
     assert blend["coverage"] == "uncovered" and abs(rep["probability"] - blend["r1_score"]) < 1e-9  # fallback = EMBER2024's score
     assert "EMBER2024 only" in c.get(f"/file/{sha}").get_data(as_text=True)
+
+
+def test_delete_file_removes_record_submissions_and_quarantine_copy(make, tmp_path):
+    app, c, key = make(stub_scan(0.9))
+    sha = submit(app, c, key, b"d", "del.exe")
+    other = submit(app, c, key, b"e", "keep.exe")
+    db = app.config["DB"]
+    q = tmp_path / "dash" / "quarantine" / sha
+    assert q.exists() and "Delete" in c.get(f"/file/{sha}").get_data(as_text=True)
+    assert c.post(f"/file/{sha}/delete").status_code == 302
+    assert c.get(f"/file/{sha}").status_code == 404 and not q.exists()
+    assert not db.one("SELECT 1 FROM files WHERE sha256=?", (sha,)) and not db.one("SELECT 1 FROM submissions WHERE sha256=?", (sha,))
+    assert db.one("SELECT 1 FROM files WHERE sha256=?", (other,)) and c.get(f"/file/{other}").status_code == 200
+    assert c.post("/file/" + "0" * 64 + "/delete").status_code == 404
+    assert submit(app, c, key, b"d", "del.exe") == sha and c.get(f"/file/{sha}").status_code == 200  # can be submitted again
+    assert make(login=False)[1].post(f"/file/{sha}/delete").status_code == 302  # signed-out request is sent to the login page

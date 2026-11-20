@@ -111,3 +111,92 @@ def test_allowlist_transport_to_dashboard(tmp_path, monkeypatch):
         assert agent.stats()["totals"]["uploads_sent"] == 1
     finally:
         srv.shutdown()
+
+
+def test_http_server_files_are_found_downloaded_and_queued(tmp_path, monkeypatch):
+    import functools
+    import http.server
+
+    import psutil
+
+    from src.edr import httpwatch
+
+    monkeypatch.setattr(httpwatch, "is_http_server", lambda cmd: False)  # only the test server's port is watched, not real servers on this PC
+    served = tmp_path / "www"
+    (served / "sub").mkdir(parents=True)
+    (served / "tool.exe").write_bytes(b"MZ" + b"\x00" * 64)
+    (served / "sub" / "lib.dll").write_bytes(b"MZ" + b"\x01" * 64)
+    (served / "notes.exe").write_bytes(b"not a pe")  # wrong magic: ignored
+    (served / "readme.txt").write_text("hi")
+    handler = functools.partial(http.server.SimpleHTTPRequestHandler, directory=str(served))
+    handler.log_message = lambda *a, **k: None
+    srv = http.server.ThreadingHTTPServer(("127.0.0.1", 0), handler)
+    threading.Thread(target=srv.serve_forever, daemon=True).start()
+    port = srv.server_address[1]
+    try:
+        agent = Agent(tmp_path / "edr")
+        agent.db.set_setting("http_ports", str(port))
+        agent.http_scan(psutil.net_connections("inet"), agent.cfg())
+        rows = {Path(r["path"]).name: r for r in agent.db.q("SELECT * FROM binaries")}
+        assert set(rows) == {"tool.exe", "lib.dll"}
+        assert all(r["origin"] == "http" and r["state"] == "pending" for r in rows.values())  # uploaded even in allowlist mode
+        assert f"127.0.0.1:{port}/tool.exe" in rows["tool.exe"]["meta_json"]
+        agent.http_scan(psutil.net_connections("inet"), agent.cfg())  # unchanged files are not fetched again
+        assert agent.db.val("SELECT COUNT(*) FROM binaries") == 2
+        agent.db.set_setting("http_watch", "0")
+        (served / "new.exe").write_bytes(b"MZ" + b"\x02" * 64)
+        agent._http_probed.clear()
+        agent.http_scan(psutil.net_connections("inet"), agent.cfg())
+        assert agent.db.val("SELECT COUNT(*) FROM binaries") == 2
+    finally:
+        srv.shutdown()
+
+
+def test_toast_sent_with_report_url(monkeypatch, tmp_path):
+    from src.edr import notify
+
+    real, calls = notify.toast, []
+    monkeypatch.setattr(notify, "toast", lambda *a: calls.append(a))
+    agent = Agent(tmp_path / "edr")
+    row = {"sha256": "a" * 64, "path": "C:/x/evil.exe", "origin": "http", "meta_json": '{"url": "http://127.0.0.1:8000/evil.exe"}'}
+    agent._notify(row, "sent to SA2 Scan for analysis", agent.cfg())
+    title, msg, url = calls[0]
+    assert "evil.exe" in title and "127.0.0.1:8000/evil.exe" in msg and url == "http://127.0.0.1:8000/file/" + "a" * 64
+    agent.db.set_setting("notify", "0")
+    agent._notify(row, "x", agent.cfg())
+    assert len(calls) == 1
+    assert real("t", "m", "file:///etc/passwd") is False  # only http(s) links
+
+
+def test_http_file_already_scanned_is_resubmitted_when_hosted_again(tmp_path, monkeypatch):
+    import functools
+    import http.server
+
+    import psutil
+
+    from src.edr import httpwatch
+
+    monkeypatch.setattr(httpwatch, "is_http_server", lambda cmd: False)  # only the test server's port is watched, not real servers on this PC
+    served = tmp_path / "www"
+    served.mkdir()
+    (served / "tool.exe").write_bytes(b"MZ" + b"\x00" * 64)
+    handler = functools.partial(http.server.SimpleHTTPRequestHandler, directory=str(served))
+    handler.log_message = lambda *a, **k: None
+    srv = http.server.ThreadingHTTPServer(("127.0.0.1", 0), handler)
+    threading.Thread(target=srv.serve_forever, daemon=True).start()
+    port = srv.server_address[1]
+    try:
+        agent = Agent(tmp_path / "edr")
+        agent.db.set_setting("http_ports", str(port))
+        agent.http_scan(psutil.net_connections("inet"), agent.cfg())
+        sha = agent.db.val("SELECT sha256 FROM binaries")
+        agent.db.x("UPDATE binaries SET state='done', verdict='benign' WHERE sha256=?", (sha,))  # scanned earlier
+        agent._http_probed.clear()
+        agent.http_scan(psutil.net_connections("inet"), agent.cfg())
+        assert agent.db.val("SELECT state FROM binaries") == "done"  # same server, same file: nothing new
+        agent._http_pid[port] = -1  # a different server process now listens on the port
+        agent._http_probed.clear()
+        agent.http_scan(psutil.net_connections("inet"), agent.cfg())
+        assert agent.db.val("SELECT state FROM binaries") == "pending"  # queued again, so it uploads and notifies
+    finally:
+        srv.shutdown()

@@ -17,11 +17,11 @@ Environment:
   SA2_BN_PROBE_TIMEOUT=<sec>     reachability probe timeout (default 1.0)
   SA2_BN_CONNECT_TIMEOUT=<sec>   MCP session set-up timeout per pass (default 30)
   SA2_BN_LOCK=<path>             cross-process lock file (default <temp>/sa2scan_bn.lock, per user on Windows)
-  SA2_BN_MODE_SWITCH=restart|off restart  = enforce the research analysis modes the way the research did
+  SA2_BN_MODE_SWITCH=off|restart restart  = enforce the research analysis modes the way the research did
                                             (rewrite %APPDATA%/Binary Ninja/settings.json and restart
                                             Binary Ninja before each pass, restore and relaunch after);
-                                 off      = use whatever mode the running Binary Ninja is in (deviation,
-                                            recorded in the report)
+                                 off      = (default) leave Binary Ninja open and use whatever mode it is in
+                                            (deviation, recorded in the report)
   SA2_BN_EXE=<path>              binaryninja.exe (default: per-user install path used by the research)
   SA2_UPX=<path>                 upx.exe (default tools/upx/upx-4.2.4-win64/upx.exe, then PATH)
 """
@@ -76,7 +76,7 @@ def settings() -> dict[str, Any]:
         "url": env.get("SA2_BN_MCP_URL", DEFAULT_URL).strip() or DEFAULT_URL,
         "probe_timeout": _float(env.get("SA2_BN_PROBE_TIMEOUT"), 1.0),
         "connect_timeout": _float(env.get("SA2_BN_CONNECT_TIMEOUT"), CONNECT_TIMEOUT),
-        "mode_switch": env.get("SA2_BN_MODE_SWITCH", "restart").strip().lower() or "restart",
+        "mode_switch": env.get("SA2_BN_MODE_SWITCH", "off").strip().lower() or "off",
         "bn_exe": env.get("SA2_BN_EXE", ""),
         "upx": env.get("SA2_UPX", ""),
     }

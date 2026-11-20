@@ -46,3 +46,5 @@ artifacts/v10/blind/*
 !artifacts/v10/blind/replication_results.json
 # Runtime data (quarantined uploads, scan.db / edr.db with the admin password and API key) is never committed:
 # artifacts/dashboard/ and artifacts/edr/ stay ignored by artifacts/* above.
+tests/lab-emulations-200.zip
+/tests/lab-emulations-200

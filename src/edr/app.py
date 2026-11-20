@@ -141,10 +141,11 @@ def create_app(data_dir: Path | None = None, *, start_agent: bool = True) -> Fla
         if request.method == "POST":
             action = request.form.get("action")
             form = {k: request.form.get(k, "").strip() for k in
-                    ("dashboard_url", "api_key", "sensor_name", "submit_mode", "allowlist", "watchlist", "poll_seconds", "max_mb", "watch_dirs")}
+                    ("dashboard_url", "api_key", "sensor_name", "submit_mode", "allowlist", "watchlist", "poll_seconds", "max_mb", "watch_dirs", "http_ports")}
             if not form["api_key"]:
                 form["api_key"] = agent.cfg().get("api_key", "")  # blank field keeps the saved (masked) key
-            form["auto_submit"] = "1" if request.form.get("auto_submit") else "0"
+            for k in ("auto_submit", "http_watch", "notify"):
+                form[k] = "1" if request.form.get(k) else "0"
             form["rules_enabled"] = ",".join(r for r in rules.RULES if request.form.get(f"rule_{r}"))
             if form["submit_mode"] not in ("allowlist", "rules"):
                 form["submit_mode"] = "allowlist"

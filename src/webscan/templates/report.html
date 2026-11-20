@@ -62,6 +62,7 @@
         <a class="btn sm quiet" href="{{ url_for('report_csv', sha=r.sha256) }}">{{ icon('download', 'sm') }}CSV</a>
         <a class="btn sm quiet" href="{{ url_for('report_print', sha=r.sha256) }}" target="_blank">{{ icon('print', 'sm') }}Print / PDF</a>
         <form method="post" action="{{ url_for('reanalyse', sha=r.sha256) }}"><button class="btn sm quiet">{{ icon('refresh', 'sm') }}Reanalyze</button></form>
+        <form method="post" action="{{ url_for('delete_file', sha=r.sha256) }}" onsubmit="return confirm('Delete this file and all its submissions from the database?')"><button class="btn sm quiet">Delete</button></form>
       </div>
     </div>
   </section>
