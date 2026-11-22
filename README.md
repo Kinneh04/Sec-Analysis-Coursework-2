@@ -6,7 +6,7 @@ Static analysis of Windows PE files with the frozen **V8 blend** (pretrained EMB
 |---|---|---|
 | **SA2 Scan** (`src/webscan/`) | Upload or search files, read the verdict and its reasoning, track results on a dashboard | 8000 |
 | **SA2 Sentinel** (`src/edr/`) | Endpoint agent and console; uploads selected executables to SA2 Scan | 8001 |
-| **Research pipeline** (`src/`) | Feature extraction, training, experiments V1–V10 | – |
+| **Research pipeline** (`src/`) | Feature extraction, training, experiments V8–V10 | – |
 
 ## Quick start (Windows 10/11, Python 3.11–3.13)
 

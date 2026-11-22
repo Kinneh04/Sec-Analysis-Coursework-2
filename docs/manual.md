@@ -111,7 +111,7 @@ V10 false positives: 3 of 2000 (blend), 4 of 2000 (EMBER2024). V10 ROC-AUC: 0.99
 | SA2 Scan | Analyst console: upload or search files, read verdict and reasoning, dashboard of results and correlations | `src/webscan/` | 8000 |
 | SA2 Sentinel | Endpoint agent and console: watches processes, connections and downloads; uploads selected executables to SA2 Scan. Reports only; never kills or blocks | `src/edr/` | 8001 |
 | Scorer | `python -m src.v8.deploy`: the blend as a command-line tool | `src/v8/` | – |
-| Research pipeline | Feature extraction, training, experiments V1–V10 | `src/`, `artifacts/` | – |
+| Research pipeline | Feature extraction, training, experiments V8–V10 | `src/`, `artifacts/` | – |
 
 ## How a verdict is made
 
@@ -202,15 +202,16 @@ By default (`SA2_BN_MODE_SWITCH=off`) Binary Ninja stays open and every scan run
 Needs the MalwareBazaar corpus, a benign PE corpus and Binary Ninja. Paths go in `configs/local.yaml` (template `configs/local.example.yaml`).
 
 ```powershell
-.\.venv\Scripts\python.exe -m src.inventory --config configs/local.yaml
-.\.venv\Scripts\python.exe -m src.pe_features --config configs/local.yaml
-.\.venv\Scripts\python.exe -m src.bn_features --config configs/local.yaml
-.\.venv\Scripts\python.exe -m src.build_dataset --config configs/local.yaml
-.\.venv\Scripts\python.exe -m src.train --config configs/local.yaml
-.\.venv\Scripts\python.exe -m src.evaluate --config configs/local.yaml
+.\.venv\Scripts\python.exe -m src.v4.ember extract --workers 6                               # EMBER v3 features
+.\.venv\Scripts\python.exe -m src.v6.bn_capabilities extract --manifest <queue.csv>           # Binary Ninja pass 1
+.\.venv\Scripts\python.exe -m src.v6.bn_hlil extract --manifest <queue.csv>                   # Binary Ninja pass 2
+.\.venv\Scripts\python.exe -m src.v8.cohort --n-benign 450 --n-malicious 450                  # freeze the V8 blind cohort
+.\.venv\Scripts\python.exe -m src.v8.experiment freeze                                        # fit and freeze the blend
+.\.venv\Scripts\python.exe -m src.v8.experiment blind --run                                   # one-shot V8 evaluation
+.\.venv\Scripts\python.exe -m src.v9.replicate --run                                          # V9 replication
 ```
 
-Experiment history: V1–V7 tested PE-only, structured BN, stackers and guards against EMBER2024; V3.2 met its rule and was the earlier dashboard model; V8 introduced the blend; V9 and V10 are the independent replications above. Result files: `artifacts/v8/blind/blind_results.json`, `artifacts/v9/blind/replication_results.json`, `artifacts/v10/blind/replication_results.json`. The V3.2 scorer remains available (`python -m src.v3.score`).
+V8 is the starting point of this project: it introduced the blend, and V9 and V10 are the independent replications above. Result files: `artifacts/v8/blind/blind_results.json`, `artifacts/v9/blind/replication_results.json`, `artifacts/v10/blind/replication_results.json`. A few shared helpers still live under `src/v3`, `src/v4`, `src/v6` and `src/v7` because the frozen V8 bundle records them by path.
 
 ## Layout
 
@@ -221,7 +222,8 @@ src/webscan/                         SA2 Scan (Flask)
 src/edr/                             SA2 Sentinel (Flask + agent)
 src/v8/                              deployed blend: deploy.py, bn_live.py, ember_map.py
 src/common/                          hashing, sqlite, Authenticode helpers
-src/v2 … src/v10                     research code
+src/v3, v4, v6, v7                   feature extraction and helpers used by V8
+src/v8, src/v9                       V8 experiment, V9/V10 replications
 artifacts/v8/                        frozen models, freeze manifest, blind results, feature reference
 artifacts/v9/, artifacts/v10/        replication results
 docs/manual.md                       this manual
